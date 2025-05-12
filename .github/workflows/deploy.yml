@@ -97,6 +97,6 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             mkdir -p /dockerProjects/chibbotec/resume_service
-            curl -o /dockerProjects/chibbotec/resume_service/zero_downtime_deploy.py https://raw.githubusercontent.com/chibbotec/resume_services/main/infraScript/zero_downtime_deploy.py
+            curl -o /dockerProjects/chibbotec/resume_service/zero_downtime_deploy.py https://raw.githubusercontent.com/chibbotec/resume_service/main/infraScript/zero_downtime_deploy.py
             chmod +x /dockerProjects/chibbotec/resume_service/zero_downtime_deploy.py
             python3 /dockerProjects/chibbotec/resume_service/zero_downtime_deploy.py
