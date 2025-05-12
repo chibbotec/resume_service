@@ -1,0 +1,186 @@
+// Maven 의존성
+/*
+<dependency>
+    <groupId>org.kohsuke</groupId>
+    <artifactId>github-api</artifactId>
+    <version>1.314</version>
+</dependency>
+<dependency>
+    <groupId>dev.langchain4j</groupId>
+    <artifactId>langchain4j</artifactId>
+    <version>0.23.0</version>
+</dependency>
+<dependency>
+    <groupId>dev.langchain4j</groupId>
+    <artifactId>langchain4j-open-ai</artifactId>
+    <version>0.23.0</version>
+</dependency>
+*/
+
+import org.kohsuke.github.*;
+import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.service.SystemMessage;
+import dev.langchain4j.service.UserMessage;
+import dev.langchain4j.data.message.AiMessage;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+public class GitHubRepoSummarizer {
+
+    private final GitHub github;
+    private final String repositoryName;
+    private final GHRepository repository;
+    private final ChatLanguageModel model;
+
+    public GitHubRepoSummarizer(String githubToken, String openAiApiKey, String repositoryName) throws IOException {
+        this.github = new GitHubBuilder().withOAuthToken(githubToken).build();
+        this.repositoryName = repositoryName;
+        this.repository = github.getRepository(repositoryName);
+
+        // OpenAI 모델 초기화
+        this.model = OpenAiChatModel.builder()
+                .apiKey(openAiApiKey)
+                .modelName("gpt-4") // 또는 다른 모델 (gpt-3.5-turbo 등)
+                .temperature(0.7)
+                .build();
+    }
+
+    /**
+     * 특정 경로의 파일 내용을 가져옵니다.
+     */
+    public String getFileContent(String filePath, String branch) throws IOException {
+        GHContent content = repository.getFileContent(filePath, branch);
+        return new String(content.read().readAllBytes(), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 디렉토리의 모든 파일과 하위 디렉토리를 재귀적으로 가져옵니다.
+     */
+    public List<GHContent> getAllFilesRecursively(String path, String branch) throws IOException {
+        List<GHContent> allFiles = new ArrayList<>();
+        List<GHContent> contents = repository.getDirectoryContent(path, branch);
+
+        for (GHContent content : contents) {
+            if (content.isDirectory()) {
+                allFiles.addAll(getAllFilesRecursively(content.getPath(), branch));
+            } else {
+                allFiles.add(content);
+            }
+        }
+
+        return allFiles;
+    }
+
+    /**
+     * 파일 확장자로 필터링합니다.
+     */
+    public List<GHContent> filterFilesByExtension(List<GHContent> files, List<String> extensions) {
+        return files.stream()
+                .filter(file -> {
+                    String fileName = file.getName().toLowerCase();
+                    return extensions.stream().anyMatch(ext -> fileName.endsWith("." + ext));
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 파일 목록의 내용을 요약합니다.
+     */
+    public Map<String, String> summarizeFiles(List<GHContent> files, String branch) throws IOException {
+        Map<String, String> summaries = new HashMap<>();
+
+        for (GHContent file : files) {
+            String content = getFileContent(file.getPath(), branch);
+
+            // 파일 크기가 너무 크면 제한할 수 있습니다
+            if (content.length() > 10000) {
+                content = content.substring(0, 10000) + "... (truncated)";
+            }
+
+            // LangChain을 통해 AI에게 요약 요청
+            String summary = summarizeWithAI(file.getPath(), content);
+            summaries.put(file.getPath(), summary);
+
+            System.out.println("파일 요약 완료: " + file.getPath());
+        }
+
+        return summaries;
+    }
+
+    /**
+     * LangChain을 사용하여 AI에게 파일 내용 요약 요청
+     */
+    private String summarizeWithAI(String filePath, String content) {
+        String prompt = "다음은 GitHub 레포지토리의 '" + filePath + "' 파일 내용입니다. 이 파일을 간결하게 요약해주세요:\n\n" + content;
+
+        try {
+            AiMessage response = model.generate(
+                SystemMessage.from("당신은 코드와 문서를 이해하고 요약하는 전문가입니다. 파일의 주요 내용, 목적, 기능을 간결하게 요약해주세요."),
+                UserMessage.from(prompt)
+            );
+
+            return response.text();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "요약 실패: " + e.getMessage();
+        }
+    }
+
+    /**
+     * 전체 레포지토리 요약 생성
+     */
+    public String generateRepositorySummary(Map<String, String> fileSummaries) {
+        StringBuilder summaryText = new StringBuilder();
+        summaryText.append("# 레포지토리 요약: ").append(repositoryName).append("\n\n");
+
+        for (Map.Entry<String, String> entry : fileSummaries.entrySet()) {
+            summaryText.append("## ").append(entry.getKey()).append("\n\n");
+            summaryText.append(entry.getValue()).append("\n\n");
+            summaryText.append("---\n\n");
+        }
+
+        return summaryText.toString();
+    }
+
+    public static void main(String[] args) {
+        try {
+            // GitHub 토큰
+            String githubToken = "your_github_personal_access_token";
+            // OpenAI API 키
+            String openAiApiKey = "your_openai_api_key";
+            // 레포지토리 (사용자명/레포지토리명)
+            String repositoryName = "username/repository";
+            // 브랜치
+            String branch = "main";
+
+            GitHubRepoSummarizer summarizer = new GitHubRepoSummarizer(githubToken, openAiApiKey, repositoryName);
+
+            // 1. 레포지토리의 모든 파일 가져오기 (또는 특정 폴더에서 시작)
+            List<GHContent> allFiles = summarizer.getAllFilesRecursively("", branch);
+            System.out.println("총 파일 수: " + allFiles.size());
+
+            // 2. 특정 파일만 필터링 (예: Java, Python, JavaScript 파일)
+            List<String> targetExtensions = List.of("java", "py", "js", "md", "json");
+            List<GHContent> filteredFiles = summarizer.filterFilesByExtension(allFiles, targetExtensions);
+            System.out.println("필터링된 파일 수: " + filteredFiles.size());
+
+            // 3. 파일 내용 요약하기
+            Map<String, String> summaries = summarizer.summarizeFiles(filteredFiles, branch);
+
+            // 4. 전체 레포지토리 요약 생성
+            String repoSummary = summarizer.generateRepositorySummary(summaries);
+            System.out.println("\n=== 레포지토리 요약 ===\n");
+            System.out.println(repoSummary);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}

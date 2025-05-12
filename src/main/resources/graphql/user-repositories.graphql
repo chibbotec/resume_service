@@ -1,0 +1,70 @@
+{
+  user(login: "kknaks") {
+    repositories(first: 100) {
+      nodes {
+        id
+        name
+        nameWithOwner
+        description
+        url
+        sshUrl
+        homepageUrl
+        primaryLanguage {
+          name
+        }
+        defaultBranchRef {
+          name
+          target {
+            oid
+          }
+        }
+        isPrivate
+        isFork
+        isArchived
+        isDisabled
+        stargazerCount
+        watchers {
+          totalCount
+        }
+        forkCount
+        diskUsage
+        createdAt
+        updatedAt
+        pushedAt
+      }
+    }
+    repositoriesContributedTo(first: 100) {
+      nodes {
+        id
+        name
+        nameWithOwner
+        description
+        url
+        sshUrl
+        homepageUrl
+        primaryLanguage {
+          name
+        }
+        defaultBranchRef {
+          name
+          target {
+            oid
+          }
+        }
+        isPrivate
+        isFork
+        isArchived
+        isDisabled
+        stargazerCount
+        watchers {
+          totalCount
+        }
+        forkCount
+        diskUsage
+        createdAt
+        updatedAt
+        pushedAt
+      }
+    }
+  }
+}

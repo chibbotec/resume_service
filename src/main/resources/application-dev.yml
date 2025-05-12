@@ -1,0 +1,29 @@
+server:
+  port: 9060
+spring:
+  output:
+    ansi:
+      enabled: always
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        show_sql: true
+        format_sql: true
+        use_sql_comments: true
+        default_batch_fetch_size: 100
+  kafka:
+    #    bootstrap-servers: 210.113.34.187:19092,210.113.34.187:29092,210.113.34.187:39092
+    bootstrap-servers: host.docker.internal:19092
+#    bootstrap-servers: localhost:19092
+    producer:
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+services:
+  member:
+    url: http://localhost:9020 # 회원 서비스 URL
+files:
+  storage:
+    path: ./repository/data

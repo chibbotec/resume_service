@@ -1,0 +1,27 @@
+server:
+  port: 9060
+spring:
+  output:
+    ansi:
+      enabled: always
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+#        show_sql: true
+#        format_sql: true
+#        use_sql_comments: true
+        default_batch_fetch_size: 100
+  kafka:
+    bootstrap-servers: 172.30.1.23:19092,172.30.1.23:29092,172.30.1.23:39092
+    producer:
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+services:
+  member:
+    url: http://172.30.1.23:9020  # 회원 서비스 URL
+files:
+  storage:
+    path: ./repository/data
