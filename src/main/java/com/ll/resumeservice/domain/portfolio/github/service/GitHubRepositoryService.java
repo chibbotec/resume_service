@@ -93,6 +93,8 @@ public class GitHubRepositoryService {
   public String startAsyncRepositoryDownload(Long spaceId, Long userId, SaveRepositoryContents request) {
     // 작업 ID 생성
     String taskId = UUID.randomUUID().toString();
+    log.info("[Task: {}] 비동기 레포지토리 다운로드 작업 시작 - 사용자: {}, 레포지토리: {}", 
+        taskId, userId, request.getRepository());
 
     // 작업 정보 생성 및 저장
     DownloadTaskInfo taskInfo = new DownloadTaskInfo();
@@ -101,19 +103,27 @@ public class GitHubRepositoryService {
     // 백그라운드에서 작업 실행
     CompletableFuture.runAsync(() -> {
       try {
+        log.info("[Task: {}] 레포지토리 다운로드 작업 시작 - 파일 수: {}", 
+            taskId, request.getFilePaths().size());
         RepositorySaveResponse result = doSaveRepositoryContents(taskInfo, spaceId, userId, request);
         taskInfo.setResult(result);
         taskInfo.setCompleted(true);
         taskInfo.setCompletionTime(System.currentTimeMillis());
+        log.info("[Task: {}] 레포지토리 다운로드 작업 완료 - 저장된 파일: {}, 실패한 파일: {}", 
+            taskId, result.getSavedFiles().size(), result.getFailedFiles().size());
       } catch (Exception e) {
-        log.error("레포지토리 다운로드 작업 실패 (taskId: {})", taskId, e);
+        log.error("[Task: {}] 레포지토리 다운로드 작업 실패", taskId, e);
         taskInfo.setError(e.getMessage());
         taskInfo.setCompleted(true);
         taskInfo.setCompletionTime(System.currentTimeMillis());
       }
-    }, downloadExecutor);
-
-    log.info("비동기 레포지토리 다운로드 작업 시작 (taskId: {})", taskId);
+    }, downloadExecutor).exceptionally(throwable -> {
+      log.error("[Task: {}] 레포지토리 다운로드 작업 중 예외 발생", taskId, throwable);
+      taskInfo.setError(throwable.getMessage());
+      taskInfo.setCompleted(true);
+      taskInfo.setCompletionTime(System.currentTimeMillis());
+      return null;
+    });
 
     return taskId;
   }
@@ -125,6 +135,7 @@ public class GitHubRepositoryService {
     DownloadTaskInfo taskInfo = taskProgressMap.get(taskId);
 
     if (taskInfo == null) {
+      log.warn("[Task: {}] 존재하지 않는 작업 ID", taskId);
       return null;
     }
 
@@ -144,6 +155,16 @@ public class GitHubRepositoryService {
       if (taskInfo.getResult() != null) {
         builder.savedPath(taskInfo.getResult().getSavedPath());
       }
+      
+      log.info("[Task: {}] 작업 상태 조회 - 완료됨 (진행률: {}%, 저장된 파일: {}, 실패한 파일: {})", 
+          taskId, taskInfo.getProgressPercentage(), 
+          taskInfo.getSavedFiles().size(), 
+          taskInfo.getFailedFiles().size());
+    } else {
+      log.info("[Task: {}] 작업 상태 조회 - 진행 중 (진행률: {}%, 완료된 파일: {}/{})", 
+          taskId, taskInfo.getProgressPercentage(), 
+          taskInfo.getCompletedFiles().get(), 
+          taskInfo.getTotalFiles().get());
     }
 
     return builder.build();
@@ -166,11 +187,14 @@ public class GitHubRepositoryService {
   private RepositorySaveResponse doSaveRepositoryContents(DownloadTaskInfo taskInfo, Long spaceId, Long userId, SaveRepositoryContents request) {
     try {
       // 1. GitHub 연결 및 기본 설정
+      log.info("[Task] GitHub 연결 시도 - 사용자: {}", userId);
       GitHub github = cacheService.getGitHubConnection(userId);
       GHRepository repo = github.getRepository(request.getRepository());
+      log.info("[Task] GitHub 레포지토리 연결 성공: {}", request.getRepository());
 
       String repoName = String.format("%d_%d_", spaceId, userId) + request.getRepository().replace("/", "-");
       String saveDirectoryPath = Paths.get(storageBasePath, repoName).toString();
+      log.info("[Task] 저장 경로 설정: {}", saveDirectoryPath);
 
       Files.createDirectories(Paths.get(saveDirectoryPath));
 
@@ -181,6 +205,7 @@ public class GitHubRepositoryService {
 
       // 초기 총 파일 수 설정
       taskInfo.addToTotal(request.getFilePaths().size());
+      log.info("[Task] 총 파일 수 설정: {}", request.getFilePaths().size());
 
       // 3. 비동기 작업 생성 및 실행
       for (String filePath : request.getFilePaths()) {
@@ -188,18 +213,26 @@ public class GitHubRepositoryService {
           try {
             // 디렉토리 vs 파일 처리
             if (filePath.endsWith("/") || isDirectory(repo, filePath)) {
+              log.debug("[Task] 디렉토리 처리 시작: {}", filePath);
               downloadDirectoryAsync(repo, filePath, saveDirectoryPath, request.getBranch(),
                   taskInfo, executor);
               taskInfo.getSavedFiles().add(filePath + " (directory)");
+              log.debug("[Task] 디렉토리 저장 완료: {}", filePath);
             } else {
+              log.debug("[Task] 파일 처리 시작: {}", filePath);
               downloadFileOptimized(repo, filePath, saveDirectoryPath, request.getBranch());
               taskInfo.getSavedFiles().add(filePath);
-              taskInfo.incrementCompleted(); // 진행 상황 업데이트
+              log.debug("[Task] 파일 저장 완료: {}", filePath);
             }
+            taskInfo.incrementCompleted(); // 진행 상황 업데이트
+            log.debug("[Task] 진행 상황 업데이트: {}/{} ({}%)", 
+                taskInfo.getCompletedFiles().get(), 
+                taskInfo.getTotalFiles().get(),
+                taskInfo.getProgressPercentage());
           } catch (Exception e) {
             taskInfo.getFailedFiles().add(filePath);
             taskInfo.incrementCompleted(); // 진행 상황 업데이트
-            log.error("파일/디렉토리 저장 실패: {} - {}", filePath, e.getMessage(), e);
+            log.error("[Task] 파일/디렉토리 저장 실패: {} - {}", filePath, e.getMessage(), e);
           }
         }, executor);
 
@@ -207,21 +240,25 @@ public class GitHubRepositoryService {
       }
 
       // 4. 모든 작업 완료 대기
+      log.info("[Task] 모든 파일 다운로드 작업 시작 - 대기 중...");
       CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+      log.info("[Task] 모든 파일 다운로드 작업 완료");
 
       // 안전하게 스레드 풀 종료
       executor.shutdown();
       try {
         if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+          log.warn("[Task] 스레드 풀 강제 종료");
           executor.shutdownNow();
         }
       } catch (InterruptedException e) {
+        log.error("[Task] 스레드 풀 종료 중 인터럽트 발생", e);
         executor.shutdownNow();
         Thread.currentThread().interrupt();
       }
 
       // 5. 결과 반환
-      log.info("GitHub 레포지토리 파일 저장 완료 - 저장된 파일: {}, 실패한 파일: {}",
+      log.info("[Task] GitHub 레포지토리 파일 저장 완료 - 저장된 파일: {}, 실패한 파일: {}",
           taskInfo.getSavedFiles().size(), taskInfo.getFailedFiles().size());
 
       return RepositorySaveResponse.builder()
@@ -232,7 +269,7 @@ public class GitHubRepositoryService {
           .build();
 
     } catch (Exception e) {
-      log.error("GitHub 레포지토리 정보 저장 중 오류 발생", e);
+      log.error("[Task] GitHub 레포지토리 정보 저장 중 오류 발생", e);
       return RepositorySaveResponse.builder()
           .success(false)
           .failedFiles(List.of("전체 작업 실패"))
