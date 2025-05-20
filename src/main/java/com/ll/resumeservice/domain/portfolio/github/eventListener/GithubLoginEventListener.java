@@ -1,9 +1,8 @@
 package com.ll.resumeservice.domain.portfolio.github.eventListener;
 
-import com.ll.resumeservice.domain.portfolio.github.dto.GitHubLoginEvent;
 import com.ll.resumeservice.domain.portfolio.github.entity.GitHubApi;
 import com.ll.resumeservice.domain.portfolio.github.service.GitHubApiService;
-import com.ll.resumeservice.domain.portfolio.github.service.GitHubRepositoryService;
+import com.ll.resumeservice.domain.portfolio.github.service.GitHubRepoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -15,7 +14,7 @@ import org.springframework.stereotype.Component;
 public class GithubLoginEventListener {
 
   private final GitHubApiService gitHubApiService;
-  private final GitHubRepositoryService gitHubRepositoryService;
+  private final GitHubRepoService gitHubRepoService;
 
   @KafkaListener(
       topics = "github_login",
@@ -34,7 +33,7 @@ public class GithubLoginEventListener {
     GitHubApi gitHubApi = gitHubApiService.saveGitHubApi(githubLoginEvent);
     log.info("GitHub API 정보 저장 완료: {}", gitHubApi.getGithubAccessToken());
 
-    gitHubRepositoryService.saveRepositoryList(githubLoginEvent.getUserId());
+    gitHubRepoService.saveRepositoryList(githubLoginEvent.getUserId());
 
 //    gitHubGraphQLService.saveAllRepositoriesToMongoAsync(githubLoginEvent.getUserId())
 //        .thenAccept(result -> log.info("레포지토리 정보 비동기 저장 작업 완료"))

@@ -1,6 +1,6 @@
 package com.ll.resumeservice.global.config;
 
-import com.ll.resumeservice.domain.portfolio.github.dto.GitHubLoginEvent;
+import com.ll.resumeservice.domain.portfolio.github.eventListener.GitHubLoginEvent;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -32,7 +32,7 @@ public class KafkaConsumerConfig {
     // 추가 설정 - 타입 구분에 필요한 정보 포함
     props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
     props.put(JsonDeserializer.TYPE_MAPPINGS,
-        "com.ll.authservice.global.kafka.GitHubLoginEvent:com.ll.resumeservice.domain.portfolio.github.dto.GitHubLoginEvent");
+        "com.ll.authservice.global.kafka.GitHubLoginEvent:com.ll.resumeservice.domain.portfolio.github.eventListener.GitHubLoginEvent");
 
     return new DefaultKafkaConsumerFactory<>(
         props,

@@ -52,9 +52,6 @@ dependencies {
     testImplementation("org.springframework.kafka:spring-kafka-test")
 
     implementation ("org.springframework.boot:spring-boot-starter-oauth2-client")
-    implementation ("org.springframework.boot:spring-boot-starter-thymeleaf")
-    implementation ("dev.langchain4j:langchain4j:0.23.0")
-    implementation ("dev.langchain4j:langchain4j-open-ai:0.23.0")
     implementation ("org.springframework.security:spring-security-core")
 }
 

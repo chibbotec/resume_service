@@ -4,7 +4,6 @@ package com.ll.resumeservice.domain.portfolio.github.service;
 import com.ll.resumeservice.domain.portfolio.github.document.GitHubRepository;
 import com.ll.resumeservice.domain.portfolio.github.repository.GitHubRepositoryMongo;
 import java.net.URL;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -22,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @RequiredArgsConstructor
 public class GitHubMongoService {
-
+//
   private final GitHubRepositoryMongo gitHubRepositoryMongo;
 
   @Transactional
@@ -117,9 +116,6 @@ public class GitHubMongoService {
     }
   }
 
-  /**
-   * 레포지토리 상세 정보를 MongoDB에서 가져오기
-   */
   public Map<String, Object> getRepositoryDetailFromMongo(Long userId, String fullRepoName) {
     try {
       GitHubRepository repo = gitHubRepositoryMongo.findByUserIdAndFullName(userId, fullRepoName);
@@ -156,69 +152,69 @@ public class GitHubMongoService {
       throw new RuntimeException("MongoDB에서 레포지토리 상세 정보를 가져오는데 실패했습니다: " + fullRepoName, e);
     }
   }
-
-  /**
-   * 레포지토리 컨텐츠를 MongoDB에서 가져오기
-   * 특정 경로의 파일 및 디렉토리 목록을 반환
-   */
-  public List<Map<String, Object>> getRepositoryContentsFromMongo(Long userId, String fullRepoName, String path) {
-    try {
-      GitHubRepository repo = gitHubRepositoryMongo.findByUserIdAndFullName(userId, fullRepoName);
-      if (repo == null) {
-        throw new RuntimeException("레포지토리를 찾을 수 없습니다: " + fullRepoName);
-      }
-
-      // 레포지토리의 파일 목록
-      List<Map<String, Object>> files = repo.getFiles();
-      if (files == null || files.isEmpty()) {
-        return new ArrayList<>();
-      }
-
-      // 요청된 경로가 없으면 루트 디렉토리 내용 반환
-      if (path == null || path.trim().isEmpty()) {
-        return files;
-      }
-
-      // 요청된 경로에 맞는 디렉토리 찾기
-      Map<String, Object> directoryContent = findDirectoryByPath(files, path);
-
-      if (directoryContent != null && directoryContent.containsKey("directory")) {
-        return (List<Map<String, Object>>) directoryContent.get("directory");
-      }
-
-      return new ArrayList<>();
-    } catch (Exception e) {
-      log.error("MongoDB에서 레포지토리 컨텐츠 조회 중 오류 발생", e);
-      throw new RuntimeException("MongoDB에서 레포지토리 컨텐츠를 가져오는데 실패했습니다: " + fullRepoName + ", 경로: " + path, e);
-    }
-  }
-
-  /**
-   * 특정 경로의 디렉토리 찾기
-   */
-  private Map<String, Object> findDirectoryByPath(List<Map<String, Object>> files, String targetPath) {
-    // 경로 정규화 (앞뒤 슬래시 제거)
-    targetPath = targetPath.replaceAll("^/+", "").replaceAll("/+$", "");
-
-    // 현재 레벨에서 찾기
-    for (Map<String, Object> file : files) {
-      String path = (String) file.get("path");
-      if (path.equals(targetPath) && "dir".equals(file.get("type"))) {
-        return file;
-      }
-    }
-
-    // 하위 디렉토리 탐색
-    for (Map<String, Object> file : files) {
-      if ("dir".equals(file.get("type")) && file.containsKey("directory")) {
-        List<Map<String, Object>> subDir = (List<Map<String, Object>>) file.get("directory");
-        Map<String, Object> found = findDirectoryByPath(subDir, targetPath);
-        if (found != null) {
-          return found;
-        }
-      }
-    }
-
-    return null;
-  }
+//
+//  /**
+//   * 레포지토리 컨텐츠를 MongoDB에서 가져오기
+//   * 특정 경로의 파일 및 디렉토리 목록을 반환
+//   */
+//  public List<Map<String, Object>> getRepositoryContentsFromMongo(Long userId, String fullRepoName, String path) {
+//    try {
+//      GitHubRepository repo = gitHubRepositoryMongo.findByUserIdAndFullName(userId, fullRepoName);
+//      if (repo == null) {
+//        throw new RuntimeException("레포지토리를 찾을 수 없습니다: " + fullRepoName);
+//      }
+//
+//      // 레포지토리의 파일 목록
+//      List<Map<String, Object>> files = repo.getFiles();
+//      if (files == null || files.isEmpty()) {
+//        return new ArrayList<>();
+//      }
+//
+//      // 요청된 경로가 없으면 루트 디렉토리 내용 반환
+//      if (path == null || path.trim().isEmpty()) {
+//        return files;
+//      }
+//
+//      // 요청된 경로에 맞는 디렉토리 찾기
+//      Map<String, Object> directoryContent = findDirectoryByPath(files, path);
+//
+//      if (directoryContent != null && directoryContent.containsKey("directory")) {
+//        return (List<Map<String, Object>>) directoryContent.get("directory");
+//      }
+//
+//      return new ArrayList<>();
+//    } catch (Exception e) {
+//      log.error("MongoDB에서 레포지토리 컨텐츠 조회 중 오류 발생", e);
+//      throw new RuntimeException("MongoDB에서 레포지토리 컨텐츠를 가져오는데 실패했습니다: " + fullRepoName + ", 경로: " + path, e);
+//    }
+//  }
+//
+//  /**
+//   * 특정 경로의 디렉토리 찾기
+//   */
+//  private Map<String, Object> findDirectoryByPath(List<Map<String, Object>> files, String targetPath) {
+//    // 경로 정규화 (앞뒤 슬래시 제거)
+//    targetPath = targetPath.replaceAll("^/+", "").replaceAll("/+$", "");
+//
+//    // 현재 레벨에서 찾기
+//    for (Map<String, Object> file : files) {
+//      String path = (String) file.get("path");
+//      if (path.equals(targetPath) && "dir".equals(file.get("type"))) {
+//        return file;
+//      }
+//    }
+//
+//    // 하위 디렉토리 탐색
+//    for (Map<String, Object> file : files) {
+//      if ("dir".equals(file.get("type")) && file.containsKey("directory")) {
+//        List<Map<String, Object>> subDir = (List<Map<String, Object>>) file.get("directory");
+//        Map<String, Object> found = findDirectoryByPath(subDir, targetPath);
+//        if (found != null) {
+//          return found;
+//        }
+//      }
+//    }
+//
+//    return null;
+//  }
 }
