@@ -203,9 +203,20 @@ public class GitHubRepositoryService {
       ExecutorService executor = Executors.newFixedThreadPool(processors);
       List<CompletableFuture<Void>> futures = new ArrayList<>();
 
-      // 초기 총 파일 수 설정
-      taskInfo.addToTotal(request.getFilePaths().size());
-      log.info("[Task] 총 파일 수 설정: {}", request.getFilePaths().size());
+      // 초기 총 파일 수 설정 - 디렉토리 내부 파일 수도 포함
+      int totalFiles = request.getFilePaths().size();
+      for (String filePath : request.getFilePaths()) {
+        if (filePath.endsWith("/") || isDirectory(repo, filePath)) {
+          try {
+            List<GHContent> contents = repo.getDirectoryContent(filePath);
+            totalFiles += contents.size() - 1; // 디렉토리 자체는 제외
+          } catch (Exception e) {
+            log.warn("디렉토리 파일 수 계산 중 오류: {}", filePath, e);
+          }
+        }
+      }
+      taskInfo.addToTotal(totalFiles);
+      log.info("[Task] 총 파일 수 설정: {}", totalFiles);
 
       // 3. 비동기 작업 생성 및 실행
       for (String filePath : request.getFilePaths()) {
@@ -222,16 +233,16 @@ public class GitHubRepositoryService {
               log.debug("[Task] 파일 처리 시작: {}", filePath);
               downloadFileOptimized(repo, filePath, saveDirectoryPath, request.getBranch());
               taskInfo.getSavedFiles().add(filePath);
+              taskInfo.incrementCompleted(); // 진행 상황 업데이트
               log.debug("[Task] 파일 저장 완료: {}", filePath);
             }
-            taskInfo.incrementCompleted(); // 진행 상황 업데이트
             log.debug("[Task] 진행 상황 업데이트: {}/{} ({}%)", 
                 taskInfo.getCompletedFiles().get(), 
                 taskInfo.getTotalFiles().get(),
                 taskInfo.getProgressPercentage());
           } catch (Exception e) {
             taskInfo.getFailedFiles().add(filePath);
-            taskInfo.incrementCompleted(); // 진행 상황 업데이트
+            taskInfo.incrementCompleted(); // 실패한 경우에도 진행 상황 업데이트
             log.error("[Task] 파일/디렉토리 저장 실패: {} - {}", filePath, e.getMessage(), e);
           }
         }, executor);
@@ -289,10 +300,13 @@ public class GitHubRepositoryService {
       if (dirPath.endsWith("/")) {
         dirPath = dirPath.substring(0, dirPath.length() - 1);
       }
+      log.info("[Task] 디렉토리 다운로드 시작: {}", dirPath);
 
       // GitHub에서 디렉토리 내용 가져오기
+      log.debug("[Task] GitHub에서 디렉토리 내용 요청: {}", dirPath);
       List<GHContent> contents = (branch != null && !branch.isEmpty()) ?
           repo.getDirectoryContent(dirPath, branch) : repo.getDirectoryContent(dirPath);
+      log.info("[Task] 디렉토리 내용 수신 완료: {} (파일 수: {})", dirPath, contents.size());
 
       // 총 파일 수 업데이트
       taskInfo.addToTotal(contents.size());
@@ -305,18 +319,22 @@ public class GitHubRepositoryService {
           try {
             if (content.isDirectory()) {
               // 하위 디렉토리 처리
+              log.debug("[Task] 하위 디렉토리 처리 시작: {}", content.getPath());
               downloadDirectoryAsync(repo, content.getPath(), localDirPath, branch,
                   taskInfo, executor);
+              log.debug("[Task] 하위 디렉토리 처리 완료: {}", content.getPath());
             } else {
               // 파일 처리
+              log.debug("[Task] 디렉토리 내 파일 처리 시작: {}", content.getPath());
               downloadFileOptimized(repo, content.getPath(), localDirPath, branch);
               taskInfo.getSavedFiles().add(content.getPath());
               taskInfo.incrementCompleted(); // 진행 상황 업데이트
+              log.debug("[Task] 디렉토리 내 파일 처리 완료: {}", content.getPath());
             }
           } catch (Exception e) {
             taskInfo.getFailedFiles().add(content.getPath());
             taskInfo.incrementCompleted(); // 진행 상황 업데이트
-            log.error("콘텐츠 처리 실패: {} - {}", content.getPath(), e.getMessage());
+            log.error("[Task] 콘텐츠 처리 실패: {} - {}", content.getPath(), e.getMessage(), e);
           }
         }, executor);
 
@@ -324,12 +342,12 @@ public class GitHubRepositoryService {
       }
 
       // 현재 디렉토리의 모든 콘텐츠 작업이 완료될 때까지 대기
+      log.debug("[Task] 디렉토리 내 모든 작업 완료 대기: {}", dirPath);
       CompletableFuture.allOf(contentFutures.toArray(new CompletableFuture[0])).join();
-
-      log.debug("디렉토리 저장 완료: {}", dirPath);
+      log.info("[Task] 디렉토리 다운로드 완료: {}", dirPath);
     } catch (Exception e) {
       taskInfo.getFailedFiles().add(path);
-      log.error("디렉토리 처리 실패: {} - {}", path, e.getMessage(), e);
+      log.error("[Task] 디렉토리 처리 실패: {} - {}", path, e.getMessage(), e);
       throw e;
     }
   }
@@ -566,33 +584,41 @@ public class GitHubRepositoryService {
   private void downloadFileOptimized(GHRepository repo, String path, String localDirPath, String branch) throws IOException {
     // 파일 경로 처리
     Path localFilePath = Paths.get(localDirPath, path);
+    log.info("[Task] 파일 다운로드 시작: {} -> {}", path, localFilePath);
 
     // 필요한 디렉토리 생성
     Files.createDirectories(localFilePath.getParent());
+    log.debug("[Task] 디렉토리 생성 완료: {}", localFilePath.getParent());
 
     // 이미 존재하는 파일인지 확인 - 캐싱 효과
     if (Files.exists(localFilePath)) {
-      // 이미 다운로드된 파일인 경우 건너뛰기 (선택적)
-      log.debug("파일이 이미 존재합니다: {}", localFilePath);
+      log.info("[Task] 파일이 이미 존재함: {}", localFilePath);
       return;
     }
 
     // GitHub에서 파일 내용 가져오기
+    log.debug("[Task] GitHub에서 파일 내용 요청: {}", path);
     GHContent content = (branch != null && !branch.isEmpty()) ?
         repo.getFileContent(path, branch) : repo.getFileContent(path);
+    log.debug("[Task] GitHub 파일 내용 수신 완료: {}", path);
 
     // 큰 파일을 위한 버퍼 최적화
     try (InputStream is = content.read();
         OutputStream os = new FileOutputStream(localFilePath.toString())) {
+      log.debug("[Task] 파일 쓰기 시작: {}", localFilePath);
       // 버퍼 크기 증가 (8KB)
       byte[] buffer = new byte[8192];
       int bytesRead;
+      long totalBytesRead = 0;
       while ((bytesRead = is.read(buffer)) != -1) {
         os.write(buffer, 0, bytesRead);
+        totalBytesRead += bytesRead;
       }
+      log.info("[Task] 파일 저장 완료: {} (크기: {} bytes)", localFilePath, totalBytesRead);
+    } catch (Exception e) {
+      log.error("[Task] 파일 저장 중 오류 발생: {} - {}", localFilePath, e.getMessage(), e);
+      throw e;
     }
-
-    log.debug("파일 저장 완료: {}", localFilePath);
   }
 
   public List<JsonNode> getRepositoryList(Long userId) {
