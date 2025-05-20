@@ -203,54 +203,74 @@ public class GitHubRepositoryService {
       ExecutorService executor = Executors.newFixedThreadPool(processors);
       List<CompletableFuture<Void>> futures = new ArrayList<>();
 
-      // 초기 총 파일 수 설정 - 디렉토리 내부 파일 수도 포함
-      int totalFiles = request.getFilePaths().size();
-      for (String filePath : request.getFilePaths()) {
-        if (filePath.endsWith("/") || isDirectory(repo, filePath)) {
-          try {
-            List<GHContent> contents = repo.getDirectoryContent(filePath);
-            totalFiles += contents.size() - 1; // 디렉토리 자체는 제외
-          } catch (Exception e) {
-            log.warn("디렉토리 파일 수 계산 중 오류: {}", filePath, e);
-          }
+      // 3. 트리 구조 가져오기
+      String branch = request.getBranch() != null ? request.getBranch() : repo.getDefaultBranch();
+      log.info("[Task] 트리 구조 가져오기 시작 - 브랜치: {}", branch);
+      
+      GHTree tree = repo.getTreeRecursive(branch, 1);
+      Map<String, GHTreeEntry> treeEntries = new HashMap<>();
+      
+      // 요청된 경로에 해당하는 트리 엔트리만 필터링
+      for (GHTreeEntry entry : tree.getTree()) {
+        String path = entry.getPath();
+        if (request.getFilePaths().stream().anyMatch(requestPath -> 
+            path.equals(requestPath) || path.startsWith(requestPath + "/"))) {
+          treeEntries.put(path, entry);
         }
       }
-      taskInfo.addToTotal(totalFiles);
-      log.info("[Task] 총 파일 수 설정: {}", totalFiles);
 
-      // 3. 비동기 작업 생성 및 실행
-      for (String filePath : request.getFilePaths()) {
+      // 초기 총 파일 수 설정
+      taskInfo.addToTotal(treeEntries.size());
+      log.info("[Task] 총 파일 수 설정: {}", treeEntries.size());
+
+      // 4. 비동기 다운로드 작업 생성
+      for (Map.Entry<String, GHTreeEntry> entry : treeEntries.entrySet()) {
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
           try {
-            // 디렉토리 vs 파일 처리
-            if (filePath.endsWith("/") || isDirectory(repo, filePath)) {
-              log.debug("[Task] 디렉토리 처리 시작: {}", filePath);
-              downloadDirectoryAsync(repo, filePath, saveDirectoryPath, request.getBranch(),
-                  taskInfo, executor);
-              taskInfo.getSavedFiles().add(filePath + " (directory)");
-              log.debug("[Task] 디렉토리 저장 완료: {}", filePath);
+            String path = entry.getKey();
+            GHTreeEntry treeEntry = entry.getValue();
+            
+            if (treeEntry.getType().equals("tree")) {
+              // 디렉토리는 건너뛰기
+              log.debug("[Task] 디렉토리 건너뛰기: {}", path);
+              taskInfo.incrementCompleted();
             } else {
-              log.debug("[Task] 파일 처리 시작: {}", filePath);
-              downloadFileOptimized(repo, filePath, saveDirectoryPath, request.getBranch());
-              taskInfo.getSavedFiles().add(filePath);
-              taskInfo.incrementCompleted(); // 진행 상황 업데이트
-              log.debug("[Task] 파일 저장 완료: {}", filePath);
+              // 파일 다운로드
+              log.debug("[Task] 파일 다운로드 시작: {}", path);
+              Path localFilePath = Paths.get(saveDirectoryPath, path);
+              Files.createDirectories(localFilePath.getParent());
+              
+              // GitHub에서 파일 내용 가져오기
+              GHContent content = repo.getFileContent(path, branch);
+              try (InputStream is = content.read();
+                   OutputStream os = new FileOutputStream(localFilePath.toString())) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = is.read(buffer)) != -1) {
+                  os.write(buffer, 0, bytesRead);
+                }
+              }
+              
+              taskInfo.getSavedFiles().add(path);
+              taskInfo.incrementCompleted();
+              log.debug("[Task] 파일 다운로드 완료: {}", path);
             }
+            
             log.debug("[Task] 진행 상황 업데이트: {}/{} ({}%)", 
                 taskInfo.getCompletedFiles().get(), 
                 taskInfo.getTotalFiles().get(),
                 taskInfo.getProgressPercentage());
           } catch (Exception e) {
-            taskInfo.getFailedFiles().add(filePath);
-            taskInfo.incrementCompleted(); // 실패한 경우에도 진행 상황 업데이트
-            log.error("[Task] 파일/디렉토리 저장 실패: {} - {}", filePath, e.getMessage(), e);
+            taskInfo.getFailedFiles().add(entry.getKey());
+            taskInfo.incrementCompleted();
+            log.error("[Task] 파일 다운로드 실패: {} - {}", entry.getKey(), e.getMessage(), e);
           }
         }, executor);
 
         futures.add(future);
       }
 
-      // 4. 모든 작업 완료 대기
+      // 5. 모든 작업 완료 대기
       log.info("[Task] 모든 파일 다운로드 작업 시작 - 대기 중...");
       CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
       log.info("[Task] 모든 파일 다운로드 작업 완료");
@@ -268,7 +288,7 @@ public class GitHubRepositoryService {
         Thread.currentThread().interrupt();
       }
 
-      // 5. 결과 반환
+      // 6. 결과 반환
       log.info("[Task] GitHub 레포지토리 파일 저장 완료 - 저장된 파일: {}, 실패한 파일: {}",
           taskInfo.getSavedFiles().size(), taskInfo.getFailedFiles().size());
 
