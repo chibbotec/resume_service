@@ -8,6 +8,8 @@ import com.ll.resumeservice.domain.portfolio.github.service.GitHubApiService;
 import com.ll.resumeservice.domain.portfolio.github.service.GitHubCacheService;
 import com.ll.resumeservice.domain.portfolio.github.service.GitHubMongoService;
 import com.ll.resumeservice.domain.portfolio.github.service.GitHubRepositoryService;
+import com.ll.resumeservice.domain.portfolio.github.service.TaskResponse;
+import com.ll.resumeservice.domain.portfolio.github.service.TaskStatusResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
@@ -55,8 +57,11 @@ public class ApiV1GitHubController {
     return ResponseEntity.ok(repositories);
   }
 
-  @PostMapping("/users/{userId}/save-files")
-  public ResponseEntity<RepositorySaveResponse> saveFiles(
+  /**
+   * 기존 파일 저장 엔드포인트 (동기 방식)
+   */
+  @PostMapping("/users/{userId}/save-files-sync")
+  public ResponseEntity<RepositorySaveResponse> saveFilesSync(
       @PathVariable("spaceId") Long spaceId,
       @PathVariable("userId") Long userId,
       @RequestBody SaveRepositoryContents saveRepositoryContents
@@ -69,6 +74,46 @@ public class ApiV1GitHubController {
     } else {
       return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }
+  }
+
+  /**
+   * 비동기 파일 저장 엔드포인트 (작업 시작 및 ID 반환)
+   */
+  @PostMapping("/users/{userId}/save-files")
+  public ResponseEntity<TaskResponse> saveFilesAsync(
+      @PathVariable("spaceId") Long spaceId,
+      @PathVariable("userId") Long userId,
+      @RequestBody SaveRepositoryContents saveRepositoryContents
+  ) {
+    // 비동기 다운로드 작업 시작 및 태스크 ID 반환
+    String taskId = gitHubRepositoryService.startAsyncRepositoryDownload(
+        spaceId, userId, saveRepositoryContents);
+
+    // 즉시 응답 반환
+    TaskResponse response = TaskResponse.builder()
+        .taskId(taskId)
+        .message("다운로드가 백그라운드에서 시작되었습니다. 상태를 확인하려면 '/api/spaces/" +
+            spaceId + "/github/tasks/" + taskId + "' 엔드포인트를 사용하세요.")
+        .build();
+
+    return ResponseEntity.accepted().body(response);
+  }
+
+  /**
+   * 작업 상태 조회 엔드포인트
+   */
+  @GetMapping("/tasks/{taskId}")
+  public ResponseEntity<TaskStatusResponse> getTaskStatus(
+      @PathVariable("spaceId") Long spaceId,
+      @PathVariable("taskId") String taskId
+  ) {
+    TaskStatusResponse status = gitHubRepositoryService.getTaskStatus(taskId);
+
+    if (status == null) {
+      return ResponseEntity.notFound().build();
+    }
+
+    return ResponseEntity.ok(status);
   }
 
   /******************* 아래는 개발 필요 *****************/
