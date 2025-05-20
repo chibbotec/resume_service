@@ -288,7 +288,12 @@ public class GitHubRepositoryService {
         Thread.currentThread().interrupt();
       }
 
-      // 6. 결과 반환
+      // 6. 작업 완료 상태 설정
+      taskInfo.setCompleted(true);
+      taskInfo.setCompletionTime(System.currentTimeMillis());
+      log.info("[Task] 작업 완료 상태 설정됨");
+
+      // 7. 결과 반환
       log.info("[Task] GitHub 레포지토리 파일 저장 완료 - 저장된 파일: {}, 실패한 파일: {}",
           taskInfo.getSavedFiles().size(), taskInfo.getFailedFiles().size());
 
@@ -301,6 +306,9 @@ public class GitHubRepositoryService {
 
     } catch (Exception e) {
       log.error("[Task] GitHub 레포지토리 정보 저장 중 오류 발생", e);
+      taskInfo.setCompleted(true);
+      taskInfo.setError(e.getMessage());
+      taskInfo.setCompletionTime(System.currentTimeMillis());
       return RepositorySaveResponse.builder()
           .success(false)
           .failedFiles(List.of("전체 작업 실패"))
