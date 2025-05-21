@@ -1,0 +1,27 @@
+query UserCommitsAcrossBranches($owner: String!, $name: String!, $author: String!) {
+    repository(owner: $owner, name: $name) {
+        refs(refPrefix: "refs/heads/", first: 20) {
+            nodes {
+                name
+                target {
+                    ... on Commit {
+                        history(first: 30, author: {emails: [$author]}) {
+                            nodes {
+                                oid
+                                message
+                                committedDate
+                                url
+                                author {
+                                    name
+                                    email
+                                }
+                                additions
+                                deletions
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

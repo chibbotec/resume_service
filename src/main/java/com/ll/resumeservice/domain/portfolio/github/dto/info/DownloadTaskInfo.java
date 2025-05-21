@@ -1,4 +1,4 @@
-package com.ll.resumeservice.domain.portfolio.github.utils;
+package com.ll.resumeservice.domain.portfolio.github.dto.info;
 
 import com.ll.resumeservice.domain.portfolio.github.dto.response.RepositorySaveResponse;
 import java.util.ArrayList;

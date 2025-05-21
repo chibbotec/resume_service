@@ -51,8 +51,12 @@ dependencies {
     implementation("org.springframework.kafka:spring-kafka")
     testImplementation("org.springframework.kafka:spring-kafka-test")
 
+    // WebFlux
+    implementation("org.springframework.boot:spring-boot-starter-webflux")
+
     implementation ("org.springframework.boot:spring-boot-starter-oauth2-client")
     implementation ("org.springframework.security:spring-security-core")
+
 }
 
 tasks.withType<Test> {

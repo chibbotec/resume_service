@@ -8,7 +8,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @Builder
-public class TaskStatusResponse {
+public class RepoTaskStatusResponse {
   private String taskId;
   private boolean completed;
   private int progress;

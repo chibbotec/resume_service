@@ -7,7 +7,7 @@ import com.ll.resumeservice.domain.portfolio.portfolio.document.Portfolio.Conten
 import com.ll.resumeservice.domain.portfolio.portfolio.document.Portfolio.Duration;
 import com.ll.resumeservice.domain.portfolio.portfolio.document.Portfolio.GitHubRepo;
 import com.ll.resumeservice.domain.portfolio.portfolio.document.Portfolio.SavedFile;
-import com.ll.resumeservice.domain.portfolio.portfolio.dto.CatergorizedPortfolioResponse;
+import com.ll.resumeservice.domain.portfolio.portfolio.dto.response.CatergorizedPortfolioResponse;
 import com.ll.resumeservice.domain.portfolio.portfolio.dto.request.PortfolioRequest;
 import com.ll.resumeservice.domain.portfolio.portfolio.dto.response.PortfolioDetailResponse;
 import com.ll.resumeservice.domain.portfolio.portfolio.repository.PortfolioRepository;

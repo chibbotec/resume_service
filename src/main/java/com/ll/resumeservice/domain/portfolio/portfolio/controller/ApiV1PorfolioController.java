@@ -1,8 +1,8 @@
 package com.ll.resumeservice.domain.portfolio.portfolio.controller;
 
-import com.ll.resumeservice.domain.portfolio.portfolio.dto.CatergorizedPortfolioResponse;
+import com.ll.resumeservice.domain.portfolio.portfolio.dto.response.CatergorizedPortfolioResponse;
 import com.ll.resumeservice.domain.portfolio.portfolio.dto.request.PortfolioRequest;
-import com.ll.resumeservice.domain.portfolio.portfolio.dto.PortfolioResponse;
+import com.ll.resumeservice.domain.portfolio.portfolio.dto.response.PortfolioResponse;
 import com.ll.resumeservice.domain.portfolio.portfolio.dto.response.PortfolioDetailResponse;
 import com.ll.resumeservice.domain.portfolio.portfolio.service.PortfolioService;
 import com.ll.resumeservice.global.client.MemberResponse;

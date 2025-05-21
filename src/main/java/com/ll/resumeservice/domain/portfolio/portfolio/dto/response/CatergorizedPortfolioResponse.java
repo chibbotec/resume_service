@@ -1,4 +1,4 @@
-package com.ll.resumeservice.domain.portfolio.portfolio.dto;
+package com.ll.resumeservice.domain.portfolio.portfolio.dto.response;
 
 import com.ll.resumeservice.domain.portfolio.portfolio.document.Portfolio;
 import java.util.List;

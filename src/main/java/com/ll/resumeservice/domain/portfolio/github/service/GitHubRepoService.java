@@ -1,30 +1,26 @@
 package com.ll.resumeservice.domain.portfolio.github.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ll.resumeservice.domain.portfolio.github.document.GitHubRepository;
+import com.ll.resumeservice.domain.portfolio.github.dto.info.DownloadTaskInfo;
 import com.ll.resumeservice.domain.portfolio.github.dto.request.SaveRepositoryRequest;
+import com.ll.resumeservice.domain.portfolio.github.dto.response.RepoTaskStatusResponse;
 import com.ll.resumeservice.domain.portfolio.github.dto.response.RepositorySaveResponse;
-import com.ll.resumeservice.domain.portfolio.github.dto.response.TaskStatusResponse;
 import com.ll.resumeservice.domain.portfolio.github.entity.GitHubApi;
 import com.ll.resumeservice.domain.portfolio.github.repository.GitHubRepositoryRepository;
-import com.ll.resumeservice.domain.portfolio.github.utils.DownloadTaskInfo;
 import jakarta.annotation.PostConstruct;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,11 +37,7 @@ import org.kohsuke.github.GitHub;
 import org.kohsuke.github.GitHubBuilder;
 import org.kohsuke.github.HttpException;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 @Service
 @Slf4j
@@ -54,12 +46,8 @@ public class GitHubRepoService {
 
   @Value("${files.storage.path}")
   private String storageBasePath;
-
-  private final GitHubCacheService cacheService;
+  private final GitHubApiService gitHubApiService;
   private final GitHubRepositoryRepository gitHubRepositoryRepository;
-  private final ObjectMapper objectMapper = new ObjectMapper();
-  private final RestTemplate restTemplate = new RestTemplate();
-  private static final String GITHUB_GRAPHQL_URL = "https://api.github.com/graphql";
 
   // 작업 상태를 추적하는 맵
   private final Map<String, DownloadTaskInfo> taskProgressMap = new ConcurrentHashMap<>();
@@ -86,7 +74,8 @@ public class GitHubRepoService {
             entry.getValue().getCompletionTime() < threshold);
   }
 
-  public String startAsyncRepositoryDownload(Long spaceId, Long userId, SaveRepositoryRequest request) {
+  public String startAsyncRepositoryDownload(Long spaceId, Long userId,
+      SaveRepositoryRequest request) {
     // 작업 ID 생성
     String taskId = UUID.randomUUID().toString();
     log.info("[Task: {}] 비동기 레포지토리 다운로드 작업 시작 - 사용자: {}, 레포지토리: {}",
@@ -101,7 +90,8 @@ public class GitHubRepoService {
       try {
         log.info("[Task: {}] 레포지토리 다운로드 작업 시작 - 파일 수: {}",
             taskId, request.getFilePaths().size());
-        RepositorySaveResponse result = doSaveRepositoryContents(taskInfo, spaceId, userId, request);
+        RepositorySaveResponse result = doSaveRepositoryContents(taskInfo, spaceId, userId,
+            request);
         taskInfo.setResult(result);
         taskInfo.setCompleted(true);
         taskInfo.setCompletionTime(System.currentTimeMillis());
@@ -124,7 +114,7 @@ public class GitHubRepoService {
     return taskId;
   }
 
-  public TaskStatusResponse getTaskStatus(String taskId) {
+  public RepoTaskStatusResponse getTaskStatus(String taskId) {
     DownloadTaskInfo taskInfo = taskProgressMap.get(taskId);
 
     if (taskInfo == null) {
@@ -132,7 +122,7 @@ public class GitHubRepoService {
       return null;
     }
 
-    TaskStatusResponse.TaskStatusResponseBuilder builder = TaskStatusResponse.builder()
+    RepoTaskStatusResponse.RepoTaskStatusResponseBuilder builder = RepoTaskStatusResponse.builder()
         .taskId(taskId)
         .completed(taskInfo.isCompleted())
         .progress(taskInfo.getProgressPercentage())
@@ -163,15 +153,17 @@ public class GitHubRepoService {
     return builder.build();
   }
 
-  private RepositorySaveResponse doSaveRepositoryContents(DownloadTaskInfo taskInfo, Long spaceId, Long userId, SaveRepositoryRequest request) {
+  private RepositorySaveResponse doSaveRepositoryContents(DownloadTaskInfo taskInfo, Long spaceId,
+      Long userId, SaveRepositoryRequest request) {
     try {
       // 1. GitHub 연결 및 기본 설정
       log.info("[Task] GitHub 연결 시도 - 사용자: {}", userId);
-      GitHub github = cacheService.getGitHubConnection(userId);
+      GitHub github = gitHubApiService.getGitHubConnection(userId);
       GHRepository repo = github.getRepository(request.getRepository());
       log.info("[Task] GitHub 레포지토리 연결 성공: {}", request.getRepository());
 
-      String repoName = String.format("%d_%d_", spaceId, userId) + request.getRepository().replace("/", "-");
+      String repoName =
+          String.format("%d_%d_", spaceId, userId) + request.getRepository().replace("/", "-");
       String saveDirectoryPath = Paths.get(storageBasePath, repoName).toString();
       log.info("[Task] 저장 경로 설정: {}", saveDirectoryPath);
 
@@ -197,7 +189,8 @@ public class GitHubRepoService {
               Files.createDirectories(localFilePath.getParent());
 
               // GitHub에서 파일 내용 가져오기
-              String branch = request.getBranch() != null ? request.getBranch() : repo.getDefaultBranch();
+              String branch =
+                  request.getBranch() != null ? request.getBranch() : repo.getDefaultBranch();
               GHContent content = repo.getFileContent(filePath, branch);
 
               try (InputStream is = content.read();
@@ -281,7 +274,7 @@ public class GitHubRepoService {
 
   public void saveRepositoryList(Long userId) {
     try {
-      GitHubApi gitHubApi = cacheService.findByUserId(userId);
+      GitHubApi gitHubApi = gitHubApiService.findByUserId(userId);
       List<JsonNode> repositories = getRepositoryList(userId);
       List<GitHubRepository> gitHubRepositories = new ArrayList<>();
 
@@ -345,9 +338,9 @@ public class GitHubRepoService {
             .watchers(repo.path("watchers").path("totalCount").asInt(0))
             .forks(repo.path("forkCount").asInt(0))
             .size(repo.path("diskUsage").asInt(0))
-            .createdAt(parseDate(repo.path("createdAt").asText()))
-            .updatedAt(parseDate(repo.path("updatedAt").asText()))
-            .pushedAt(parseDate(repo.path("pushedAt").asText()))
+            .createdAt(gitHubApiService.parseDate(repo.path("createdAt").asText()))
+            .updatedAt(gitHubApiService.parseDate(repo.path("updatedAt").asText()))
+            .pushedAt(gitHubApiService.parseDate(repo.path("pushedAt").asText()))
             .commitSha(repo.path("defaultBranchRef").path("target").path("oid").asText(null))
             .files(files) // 트리 구조 정보 추가
             .savedAt(new Date())
@@ -368,10 +361,17 @@ public class GitHubRepoService {
 
   public List<JsonNode> getRepositoryList(Long userId) {
     try {
-      GitHubApi gitHubApi = cacheService.findByUserId(userId);
+      GitHubApi gitHubApi = gitHubApiService.findByUserId(userId);
 
-      String query = loadGraphQLQuery("user-repositories.graphql");
-      JsonNode response = executeGraphQLQuery(gitHubApi, query);
+      String query = gitHubApiService.loadGraphQLQuery("user-repositories.graphql");
+
+      // Map으로 변수 전달
+      Map<String, Object> variables = Map.of(
+          "login", gitHubApi.getGithubUsername()
+      );
+
+      JsonNode response = gitHubApiService.executeGraphQLQuery(gitHubApi, query, variables);
+
       // 두 노드를 동시에 처리하여 하나의 List로 만들기
       List<JsonNode> allRepositories = new ArrayList<>();
 
@@ -393,44 +393,6 @@ public class GitHubRepoService {
     } catch (Exception e) {
       log.error("GraphQL API를 통한 GitHub 레포지토리 호출 중 오류 발생", e);
       throw new RuntimeException("GitHub 레포지토리 정보를 불러오는데 실패했습니다", e);
-    }
-  }
-
-  private JsonNode executeGraphQLQuery(GitHubApi gitHubApi, String query) throws IOException {
-    HttpHeaders headers = new HttpHeaders();
-    headers.setContentType(MediaType.APPLICATION_JSON);
-    headers.setBearerAuth(gitHubApi.getGithubAccessToken());
-
-    // 'login' 변수와 함께 요청 생성
-    Map<String, Object> requestBody = Map.of(
-        "query", query,
-        "variables", Map.of("login", gitHubApi.getGithubUsername()) // owner 변수 사용
-    );
-
-    HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);
-
-    String response = restTemplate.postForObject(GITHUB_GRAPHQL_URL, requestEntity, String.class);
-    return objectMapper.readTree(response);
-  }
-
-  public String loadGraphQLQuery(String filename) throws IOException {
-    return new String(
-        Objects.requireNonNull(
-                getClass().getClassLoader().getResourceAsStream("graphql/" + filename))
-            .readAllBytes(),
-        StandardCharsets.UTF_8
-    );
-  }
-
-  private Date parseDate(String dateString) {
-    if (dateString == null || dateString.isEmpty()) {
-      return null;
-    }
-    try {
-      return new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'").parse(dateString);
-    } catch (Exception e) {
-      log.error("날짜 파싱 오류: {}", dateString, e);
-      return null;
     }
   }
 }
