@@ -1,27 +1,29 @@
 package com.ll.resumeservice.domain.portfolio.github.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.ll.resumeservice.domain.portfolio.github.document.GithubCommit;
-import com.ll.resumeservice.domain.portfolio.github.document.GithubCommit.CommitDocument;
-import com.ll.resumeservice.domain.portfolio.github.document.GithubCommit.FileDocument;
-import com.ll.resumeservice.domain.portfolio.github.dto.info.CommitTaskInfo;
+import com.ll.resumeservice.domain.portfolio.github.document.CommitFileList;
+import com.ll.resumeservice.domain.portfolio.github.dto.request.RepoCommitRequest;
+import com.ll.resumeservice.domain.portfolio.github.dto.response.CommitResponse;
+import com.ll.resumeservice.domain.portfolio.github.dto.response.CommitResponse.CommitFiles;
 import com.ll.resumeservice.domain.portfolio.github.entity.GitHubApi;
-import com.ll.resumeservice.domain.portfolio.github.repository.GithubCommitRepository;
-import jakarta.transaction.Transactional;
+import com.ll.resumeservice.domain.portfolio.github.repository.CommitFileListRepository;
 import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashSet;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
 @Slf4j
@@ -31,130 +33,168 @@ public class GitHubCommitService {
 
   private final WebClient webClient;
   private final GitHubApiService gitHubApiService;
-  private final GithubCommitRepository githubCommitRepository;
-  private final ExecutorService commitExecutor = Executors.newFixedThreadPool(5);
-  private final Map<String, CommitTaskInfo> taskProgressMap = new ConcurrentHashMap<>();
+  private final CommitFileListRepository commitFileListRepository;
+
+  int processors = Runtime.getRuntime().availableProcessors();
+  private final ExecutorService commitExecutor = Executors.newFixedThreadPool(processors);;
+
+  public CommitResponse getCommitFiles(Long userId, RepoCommitRequest request) {
+    // 1. 입력 검증
+    if (request == null || request.getRepoNames() == null || request.getRepoNames().isEmpty()) {
+      return CommitResponse.builder()
+          .commitFiles(Collections.emptyList())
+          .build();
+    }
+
+    // 2. 병렬 처리로 성능 개선
+    List<CompletableFuture<CommitFiles>> futures = request.getRepoNames().stream()
+        .map(repoName -> CompletableFuture.supplyAsync(() ->
+            processRepository(userId, repoName), commitExecutor))
+        .collect(Collectors.toList());
+
+    // 3. 모든 작업 완료 대기 및 결과 수집
+    List<CommitFiles> commitFilesList = futures.stream()
+        .map(this::safeGet)
+        .filter(Objects::nonNull)
+        .collect(Collectors.toList());
+
+    return CommitResponse.builder()
+        .commitFiles(commitFilesList)
+        .build();
+  }
+
+  private CommitFiles processRepository(Long userId, String repoName) {
+    try {
+      // 1. 캐시된 데이터 먼저 확인
+      Optional<CommitFileList> cachedFileList = commitFileListRepository
+          .findByUserIdAndRepository(userId, repoName);
+
+      if (cachedFileList.isPresent()) {
+        log.debug("캐시된 데이터 사용: {}", repoName);
+        return CommitFiles.builder()
+            .repository(repoName)
+            .commitFiles(cachedFileList.get().getFileFullNames())
+            .build();
+      }
+
+      // 2. 캐시가 없으면 새로 수집
+      log.info("새로운 데이터 수집 시작: {}", repoName);
+      String[] repoParts = repoName.split("/");
+      if (repoParts.length != 2) {
+        log.error("잘못된 레포지토리 형식: {}", repoName);
+        return createEmptyCommitFiles(repoName);
+      }
+
+      CommitFileList files = collectAndSaveCommitFiles(userId, repoParts[0], repoParts[1]);
+      return CommitFiles.builder()
+          .repository(repoName)
+          .commitFiles(files.getFileFullNames())
+          .build();
+
+    } catch (Exception e) {
+      log.error("레포지토리 처리 중 오류 발생: {} - {}", repoName, e.getMessage());
+      return createEmptyCommitFiles(repoName);
+    }
+  }
+
+  private CommitFiles createEmptyCommitFiles(String repoName) {
+    return CommitFiles.builder()
+        .repository(repoName)
+        .commitFiles(Collections.emptyList())
+        .build();
+  }
 
   @Transactional
-  public GithubCommit collectAndSaveCommits(Long userId, String repoOwner, String repoName) {
+  public CommitFileList collectAndSaveCommitFiles(Long userId, String repoOwner, String repoName) {
     try {
       GitHubApi gitHubApi = gitHubApiService.findByUserId(userId);
       String repositoryFullName = repoOwner + "/" + repoName;
       String authToken = gitHubApi.getGithubAccessToken();
 
-      // 1. GithubCommit 문서 생성 또는 조회
-      GithubCommit githubCommit = new GithubCommit();
-      githubCommit.setBranches(new HashSet<>());
-      githubCommit.setContributors(new HashSet<>());
-      githubCommit.setCommits(new ArrayList<>());
+      // 파일명만 저장할 Set (중복 제거를 위해)
+      Set<String> fileNamesSet = ConcurrentHashMap.newKeySet();
 
-      // 2. GraphQL로 커밋 정보 조회하면서 바로 처리
-      fetchAndProcessCommits(gitHubApi, repoOwner, repoName, githubCommit, authToken);
+      // GraphQL로 커밋 정보 조회하면서 파일명 수집
+      fetchAndProcessCommitFiles(gitHubApi, repoOwner, repoName, fileNamesSet, authToken);
 
-      // 3. 통계 업데이트
-      updateStatistics(githubCommit);
+      // Set을 List로 변환하고 정렬
+      List<String> sortedFileNames = fileNamesSet.stream()
+          .sorted()
+          .collect(Collectors.toList());
 
-      // 4. 최종 저장
-      return githubCommitRepository.save(githubCommit);
+      // CommitFileList 생성 및 저장
+      CommitFileList commitFileList = CommitFileList.builder()
+          .userId(userId)
+          .repository(repositoryFullName)
+          .fileFullNames(sortedFileNames)
+          .build();
+
+      log.info("CommitFileList 수집 완료 - 총 {} 개의 파일", sortedFileNames.size());
+
+      return commitFileListRepository.save(commitFileList);
 
     } catch (Exception e) {
-      log.error("GitHub 커밋 수집 및 저장 중 오류 발생", e);
-      throw new RuntimeException("GitHub 커밋 정보를 처리하는데 실패했습니다", e);
+      log.error("GitHub 커밋 파일 목록 수집 중 오류 발생", e);
+      throw new RuntimeException("GitHub 커밋 파일 목록을 처리하는데 실패했습니다", e);
     }
   }
 
-  private void fetchAndProcessCommits(GitHubApi gitHubApi, String repoOwner, String repoName,
-      GithubCommit githubCommit, String authToken) throws Exception {
+  private void fetchAndProcessCommitFiles(GitHubApi gitHubApi, String repoOwner, String repoName,
+      Set<String> fileNamesSet, String authToken) throws Exception {
 
     String query = gitHubApiService.loadGraphQLQuery("user-commit-history.graphql");
+
+    // author 필터링을 위한 이메일 설정
+    String authorEmail = gitHubApi.getEmail() != null
+        ? gitHubApi.getEmail()
+        : gitHubApi.getGithubUsername() + "@users.noreply.github.com";
+
+    log.info("Using author filter: {}", authorEmail);
+
     Map<String, Object> variables = Map.of(
         "owner", repoOwner,
         "name", repoName,
-        "author", gitHubApi.getEmail() != null
-            ? gitHubApi.getEmail()
-            : gitHubApi.getGithubUsername() + "@users.noreply.github.com"
+        "author", authorEmail
     );
 
     JsonNode response = gitHubApiService.executeGraphQLQuery(gitHubApi, query, variables);
+    JsonNode nodes = response.path("data").path("repository").path("refs").path("nodes");
 
-    // 전체 응답 로깅
-    log.info("Full GraphQL response: {}", response.toPrettyString());
+    log.info("Found {} branches", nodes.size());
 
-    // 단계별 파싱 확인
-    JsonNode data = response.path("data");
-    log.info("data node exists: {}", !data.isMissingNode());
-
-    JsonNode repository = data.path("repository");
-    log.info("repository node exists: {}", !repository.isMissingNode());
-
-    JsonNode refs = repository.path("refs");
-    log.info("refs node exists: {}", !refs.isMissingNode());
-
-    JsonNode nodes = refs.path("nodes");
-    log.info("refs.nodes exists: {}, size: {}", !nodes.isMissingNode(), nodes.size());
-
-    // 초기화
-    if (githubCommit.getCommits() == null) {
-      githubCommit.setCommits(new ArrayList<>());
-    }
-    if (githubCommit.getBranches() == null) {
-      githubCommit.setBranches(new HashSet<>());
-    }
-    if (githubCommit.getContributors() == null) {
-      githubCommit.setContributors(new HashSet<>());
-    }
-
-    List<CompletableFuture<CommitDocument>> futures = new ArrayList<>();
+    List<CompletableFuture<Void>> futures = new ArrayList<>();
 
     for (JsonNode ref : nodes) {
       String branchName = ref.path("name").asText();
       JsonNode commits = ref.path("target").path("history").path("nodes");
-      log.info("commits : {}", commits);
-      // 브랜치 정보 추가
-      githubCommit.getBranches().add(branchName);
+
+      log.info("Branch: {}, Commits: {}", branchName, commits.size());
 
       for (JsonNode commit : commits) {
         String sha = commit.path("oid").asText();
-        log.info("oid : {}", sha);
 
-        // 이미 존재하는 커밋인지 체크
-        boolean exists = githubCommit.getCommits().stream()
-            .anyMatch(c -> c.getSha().equals(sha));
+        // 비동기로 파일명만 수집
+        CompletableFuture<Void> future = CompletableFuture.supplyAsync(() -> {
+          fetchCommitFilenames(authToken, repoOwner, repoName, sha, fileNamesSet);
+          return null;
+        }, commitExecutor);
 
-        if (!exists) {
-          // 기여자 정보 추가
-          String authorEmail = commit.path("author").path("email").asText();
-          githubCommit.getContributors().add(authorEmail);
-
-          // 비동기로 상세 정보 수집
-          CompletableFuture<CommitDocument> future = CompletableFuture.supplyAsync(() ->
-                  fetchCommitDetail(authToken, repoOwner, repoName, branchName, commit),
-              commitExecutor);
-          futures.add(future);
-        }
+        futures.add(future);
       }
     }
 
-    // 모든 비동기 작업 완료 대기 및 커밋 추가
-    List<CommitDocument> newCommits = futures.stream()
-        .map(CompletableFuture::join)
-        .filter(Objects::nonNull)
-        .collect(Collectors.toList());
+    // 모든 비동기 작업 완료 대기
+    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
-    githubCommit.getCommits().addAll(newCommits);
-    githubCommit.setUpdatedAt(new Date());
+    log.info("모든 커밋 처리 완료. 총 {} 개의 고유 파일 발견", fileNamesSet.size());
   }
 
-  private CommitDocument fetchCommitDetail(String authToken, String repoOwner,
-      String repoName, String branchName, JsonNode basicCommitInfo) {
-
-    String sha = basicCommitInfo.path("oid").asText();
-
+  private void fetchCommitFilenames(String authToken, String repoOwner, String repoName,
+      String sha, Set<String> fileNamesSet) {
     try {
-      // REST API로 상세 정보 조회
+      // REST API로 커밋 상세 정보 조회
       String url = String.format("https://api.github.com/repos/%s/%s/commits/%s",
           repoOwner, repoName, sha);
-      log.info("Fetching commit detail from URL: {}", url);
 
       JsonNode detailResponse = webClient.get()
           .uri(url)
@@ -164,83 +204,47 @@ public class GitHubCommitService {
           .bodyToMono(JsonNode.class)
           .block();
 
-      // 파일 정보 파싱
-      List<FileDocument> fileDocuments = parseFiles(detailResponse.path("files"));
+      JsonNode filesNode = detailResponse.path("files");
 
-      // CommitDocument 생성
-      return CommitDocument.builder()
-          .branch(branchName)
-          .sha(sha)
-          .nodeId(detailResponse.path("node_id").asText())
-          .message(basicCommitInfo.path("message").asText())
-          .author(basicCommitInfo.path("author").path("name").asText())
-          .email(basicCommitInfo.path("author").path("email").asText())
-          .date(gitHubApiService.parseDate(basicCommitInfo.path("committedDate").asText()))
-          .url(detailResponse.path("html_url").asText())
-          .totalChanges(detailResponse.path("stats").path("total").asInt())
-          .additions(detailResponse.path("stats").path("additions").asInt())
-          .deletions(detailResponse.path("stats").path("deletions").asInt())
-          .files(fileDocuments)
-          .build();
+      if (filesNode.isArray()) {
+        for (JsonNode file : filesNode) {
+          String filename = file.path("filename").asText();
+          // 파일명만 Set에 추가 (중복 자동 제거)
+          fileNamesSet.add(filename);
+        }
+      }
+
+      log.debug("커밋 {} 처리 완료 - {} 개 파일", sha, filesNode.size());
 
     } catch (Exception e) {
-      log.error("커밋 상세 정보 수집 실패: {} - {}", sha, e.getMessage());
-
-      // 실패 시 기본 정보만으로 생성
-      return CommitDocument.builder()
-          .branch(branchName)
-          .sha(sha)
-          .nodeId("")
-          .message(basicCommitInfo.path("message").asText())
-          .author(basicCommitInfo.path("author").path("name").asText())
-          .email(basicCommitInfo.path("author").path("email").asText())
-          .date(gitHubApiService.parseDate(basicCommitInfo.path("committedDate").asText()))
-          .url(basicCommitInfo.path("url").asText())
-          .totalChanges(
-              basicCommitInfo.path("additions").asInt() + basicCommitInfo.path("deletions").asInt())
-          .additions(basicCommitInfo.path("additions").asInt())
-          .deletions(basicCommitInfo.path("deletions").asInt())
-          .files(new ArrayList<>())
-          .build();
+      log.error("커밋 파일명 수집 실패: {} - {}", sha, e.getMessage());
     }
   }
 
-  private void updateStatistics(GithubCommit githubCommit) {
-    githubCommit.setTotalCommits(githubCommit.getCommits().size());
-    githubCommit.setTotalBranches(githubCommit.getBranches().size());
-
-    int totalAdditions = githubCommit.getCommits().stream()
-        .mapToInt(CommitDocument::getAdditions)
-        .sum();
-    int totalDeletions = githubCommit.getCommits().stream()
-        .mapToInt(CommitDocument::getDeletions)
-        .sum();
-
-    githubCommit.setTotalAdditions(totalAdditions);
-    githubCommit.setTotalDeletions(totalDeletions);
-    githubCommit.setUpdatedAt(new Date());
+  // 기존에 저장된 파일 목록 조회
+  public CommitFileList getCommitFileList(Long userId, String repository) {
+    return commitFileListRepository.findByUserIdAndRepository(userId, repository)
+        .orElse(null);
   }
 
-  private List<FileDocument> parseFiles(JsonNode filesNode) {
-    List<FileDocument> files = new ArrayList<>();
+  // 기존 데이터 삭제 후 새로 수집
+  @Transactional
+  public CommitFileList refreshCommitFiles(Long userId, String repoOwner, String repoName) {
+    String repositoryFullName = repoOwner + "/" + repoName;
 
-    if (filesNode.isArray()) {
-      for (JsonNode file : filesNode) {
-        FileDocument fileDoc = FileDocument.builder()
-            .sha(file.path("sha").asText())
-            .filename(file.path("filename").asText())
-            .status(file.path("status").asText())
-            .additions(file.path("additions").asInt())
-            .deletions(file.path("deletions").asInt())
-            .changes(file.path("changes").asInt())
-            .patch(file.path("patch").asText())
-            .blobUrl(file.path("blob_url").asText())
-            .build();
-        files.add(fileDoc);
-      }
+    // 기존 데이터 삭제
+    commitFileListRepository.deleteByUserIdAndRepository(userId, repositoryFullName);
+
+    // 새로 수집
+    return collectAndSaveCommitFiles(userId, repoOwner, repoName);
+  }
+
+  private <T> T safeGet(CompletableFuture<T> future) {
+    try {
+      return future.get(30, TimeUnit.SECONDS); // 타임아웃 설정
+    } catch (Exception e) {
+      log.error("비동기 작업 처리 중 오류: {}", e.getMessage());
+      return null;
     }
-    return files;
   }
-
-
 }

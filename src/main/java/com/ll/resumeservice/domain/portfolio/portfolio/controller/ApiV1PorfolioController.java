@@ -50,6 +50,4 @@ public class ApiV1PorfolioController {
     portfolioService.createPortfolio(spaceId, loginUser.getId(), request);
     return ResponseEntity.ok().build();
   }
-
-
 }

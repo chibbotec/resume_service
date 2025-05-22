@@ -1,7 +1,8 @@
 package com.ll.resumeservice.domain.portfolio.github.controller;
 
-import com.ll.resumeservice.domain.portfolio.github.document.GithubCommit;
+import com.ll.resumeservice.domain.portfolio.github.dto.request.RepoCommitRequest;
 import com.ll.resumeservice.domain.portfolio.github.dto.request.SaveRepositoryRequest;
+import com.ll.resumeservice.domain.portfolio.github.dto.response.CommitResponse;
 import com.ll.resumeservice.domain.portfolio.github.dto.response.GithubApiResponse;
 import com.ll.resumeservice.domain.portfolio.github.dto.response.RepoTaskStatusResponse;
 import com.ll.resumeservice.domain.portfolio.github.dto.response.TaskResponse;
@@ -10,6 +11,8 @@ import com.ll.resumeservice.domain.portfolio.github.service.GitHubApiService;
 import com.ll.resumeservice.domain.portfolio.github.service.GitHubCommitService;
 import com.ll.resumeservice.domain.portfolio.github.service.GitHubMongoService;
 import com.ll.resumeservice.domain.portfolio.github.service.GitHubRepoService;
+import jakarta.validation.Valid;
+import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +35,9 @@ public class ApiV1GitHubController {
   private final GitHubApiService gitHubApiService;
   private final GitHubRepoService gitHubRepoService;
   private final GitHubCommitService gitHubCommitService;
+
+  private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
 
   @GetMapping("/users/{userId}")
   public ResponseEntity<GithubApiResponse> getGitHubInfo(@PathVariable Long userId) {
@@ -85,17 +91,36 @@ public class ApiV1GitHubController {
     return ResponseEntity.ok(repoDetail);
   }
 
-  @GetMapping("/users/{userId}/repositories/{repoOwner}/{repoName}/commit/summary")
-  public ResponseEntity<GithubCommit> getCommitSummary(
+  @PostMapping("/users/{userId}/repositories/commit/summary")
+  public ResponseEntity<CommitResponse> getCommitSummary(
       @PathVariable("userId") Long userId,
-      @PathVariable("repoOwner") String repoOwner,
-      @PathVariable("repoName") String repoName
-  ){
-    GithubCommit allCommit = gitHubCommitService.collectAndSaveCommits(userId, repoOwner, repoName);
+      @RequestBody @Valid RepoCommitRequest repoCommitRequest
+  ) {
+    try {
+      // 1. 입력 검증
+      if (userId == null || userId <= 0) {
+        return ResponseEntity.badRequest().build();
+      }
 
-    return ResponseEntity.ok(allCommit);
+      // 2. 서비스 호출
+      CommitResponse commitResponse = gitHubCommitService.getCommitFiles(userId, repoCommitRequest);
+
+      // 3. 응답 검증
+      if (commitResponse == null || commitResponse.getCommitFiles() == null) {
+        return ResponseEntity.noContent().build();
+      }
+
+      return ResponseEntity.ok(commitResponse);
+
+    } catch (IllegalArgumentException e) {
+      log.warn("잘못된 요청 파라미터: {}", e.getMessage());
+      return ResponseEntity.badRequest().build();
+
+    } catch (Exception e) {
+      log.error("커밋 정보 조회 중 오류 발생", e);
+      return ResponseEntity.internalServerError().build();
+    }
   }
-
    //수동으로 모든 레포지토리를 다시 MongoDB에 저장합니다.
   @GetMapping("/users/{userId}/sync/repositories")
   public ResponseEntity<String> syncAllRepositoriesToMongo(

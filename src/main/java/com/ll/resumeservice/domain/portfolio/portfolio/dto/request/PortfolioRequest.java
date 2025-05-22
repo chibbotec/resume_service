@@ -48,6 +48,7 @@ public class PortfolioRequest {
     private String techStack;
     private String summary;
     private String description;
+    private List<String> roles;
     private Map<String, List<String>> features;
     private ArchitectureRequest architecture;
   }

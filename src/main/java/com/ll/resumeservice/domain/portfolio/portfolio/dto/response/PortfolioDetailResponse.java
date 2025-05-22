@@ -69,6 +69,7 @@ public class PortfolioDetailResponse {
     private String techStack;
     private String summary;
     private String description;
+    private List<String> roles;
     private Map<String, List<String>> features;
     private Architecture architecture;
   }
@@ -134,6 +135,7 @@ public class PortfolioDetailResponse {
         .contents(portfolio.getContents() != null ? Contents.builder()
             .techStack(portfolio.getContents().getTechStack())
             .summary(portfolio.getContents().getSummary())
+            .roles(portfolio.getContents().getRoles())
             .description(portfolio.getContents().getDescription())
             .features(portfolio.getContents().getFeatures())
             .architecture(portfolio.getContents().getArchitecture() != null ? Architecture.builder()

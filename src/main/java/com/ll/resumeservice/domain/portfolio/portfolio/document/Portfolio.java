@@ -77,6 +77,7 @@ public class Portfolio {
     private String techStack;
     private String summary;
     private String description;
+    private List<String> roles;
     private Map<String, List<String>> features; // 기능들을 Map으로 저장
     private Architecture architecture;
   }

@@ -65,6 +65,7 @@ public class PortfolioService {
     contents.setSummary(request.getContents().getSummary());
     contents.setDescription(request.getContents().getDescription());
     contents.setFeatures(request.getContents().getFeatures());
+    contents.setRoles(request.getContents().getRoles());
 
     Architecture architecture = new Architecture();
     architecture.setCommunication(request.getContents().getArchitecture().getCommunication());
