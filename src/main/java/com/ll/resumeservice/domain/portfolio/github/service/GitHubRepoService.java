@@ -276,7 +276,6 @@ public class GitHubRepoService {
     try {
       GitHubApi gitHubApi = gitHubApiService.findByUserId(userId);
       List<JsonNode> repositories = getRepositoryList(userId);
-      List<GitHubRepository> gitHubRepositories = new ArrayList<>();
 
       // GitHub 인스턴스 생성
       GitHub github = new GitHubBuilder()
@@ -292,7 +291,6 @@ public class GitHubRepoService {
 
         try {
           if (defaultBranch != null) {
-            // 빈 저장소나 트리를 가져올 수 없는 경우 예외 처리
             try {
               GHRepository ghRepo = github.getRepository(fullName);
               GHTree tree = ghRepo.getTreeRecursive(defaultBranch, 1);
@@ -309,49 +307,82 @@ public class GitHubRepoService {
                 }
               }
             } catch (HttpException e) {
-              // 빈 저장소나 트리를 가져올 수 없는 경우
-              log.warn("레포지토리 {} 트리 정보를 가져올 수 없습니다: {}",
-                  fullName, e.getMessage());
+              log.warn("레포지토리 {} 트리 정보를 가져올 수 없습니다: {}", fullName, e.getMessage());
             }
           }
         } catch (IOException treeException) {
-          log.error("레포지토리 {} 트리 정보 처리 중 오류 발생",
-              fullName, treeException);
+          log.error("레포지토리 {} 트리 정보 처리 중 오류 발생", fullName, treeException);
         }
 
-        GitHubRepository gitHubRepository = GitHubRepository.builder()
-            .userId(userId)
-            .repoId(repo.path("id").asText().hashCode() & 0x7fffffffL) // ID를 Long으로 변환
-            .name(repo.path("name").asText())
-            .fullName(fullName)
-            .description(repo.path("description").asText(null))
-            .url(repo.path("url").asText())
-            .sshUrl(repo.path("sshUrl").asText(null))
-            .homepage(repo.path("homepageUrl").asText(null))
-            .language(repo.path("primaryLanguage").path("name").asText(null))
-            .defaultBranch(defaultBranch)
-            .isPrivate(repo.path("isPrivate").asBoolean(false))
-            .isFork(repo.path("isFork").asBoolean(false))
-            .isArchived(repo.path("isArchived").asBoolean(false))
-            .isDisabled(repo.path("isDisabled").asBoolean(false))
-            .stars(repo.path("stargazerCount").asInt(0))
-            .watchers(repo.path("watchers").path("totalCount").asInt(0))
-            .forks(repo.path("forkCount").asInt(0))
-            .size(repo.path("diskUsage").asInt(0))
-            .createdAt(gitHubApiService.parseDate(repo.path("createdAt").asText()))
-            .updatedAt(gitHubApiService.parseDate(repo.path("updatedAt").asText()))
-            .pushedAt(gitHubApiService.parseDate(repo.path("pushedAt").asText()))
-            .commitSha(repo.path("defaultBranchRef").path("target").path("oid").asText(null))
-            .files(files) // 트리 구조 정보 추가
-            .savedAt(new Date())
-            .build();
+        // ✅ 기존 레포지토리 조회 (userId + fullName으로 유니크 식별)
+        GitHubRepository existingRepo = gitHubRepositoryRepository
+            .findByUserIdAndFullName(userId, fullName)
+            .orElse(null);
 
-        gitHubRepositories.add(gitHubRepository);
+        GitHubRepository gitHubRepository;
+
+        if (existingRepo != null) {
+          // ✅ 기존 레포지토리 업데이트
+          log.debug("기존 레포지토리 업데이트: {}", fullName);
+          existingRepo.setName(repo.path("name").asText());
+          existingRepo.setDescription(repo.path("description").asText(null));
+          existingRepo.setUrl(repo.path("url").asText());
+          existingRepo.setSshUrl(repo.path("sshUrl").asText(null));
+          existingRepo.setHomepage(repo.path("homepageUrl").asText(null));
+          existingRepo.setLanguage(repo.path("primaryLanguage").path("name").asText(null));
+          existingRepo.setDefaultBranch(defaultBranch);
+          existingRepo.setIsPrivate(repo.path("isPrivate").asBoolean(false));
+          existingRepo.setIsFork(repo.path("isFork").asBoolean(false));
+          existingRepo.setIsArchived(repo.path("isArchived").asBoolean(false));
+          existingRepo.setIsDisabled(repo.path("isDisabled").asBoolean(false));
+          existingRepo.setStars(repo.path("stargazerCount").asInt(0));
+          existingRepo.setWatchers(repo.path("watchers").path("totalCount").asInt(0));
+          existingRepo.setForks(repo.path("forkCount").asInt(0));
+          existingRepo.setSize(repo.path("diskUsage").asInt(0));
+          existingRepo.setUpdatedAt(gitHubApiService.parseDate(repo.path("updatedAt").asText()));
+          existingRepo.setPushedAt(gitHubApiService.parseDate(repo.path("pushedAt").asText()));
+          existingRepo.setCommitSha(repo.path("defaultBranchRef").path("target").path("oid").asText(null));
+          existingRepo.setFiles(files); // 파일 정보 업데이트
+          existingRepo.setSavedAt(new Date()); // 마지막 동기화 시간 업데이트
+
+          gitHubRepository = existingRepo;
+        } else {
+          // ✅ 새로운 레포지토리 생성
+          log.debug("새로운 레포지토리 생성: {}", fullName);
+          gitHubRepository = GitHubRepository.builder()
+              .userId(userId)
+              .repoId(repo.path("id").asText().hashCode() & 0x7fffffffL)
+              .name(repo.path("name").asText())
+              .fullName(fullName)
+              .description(repo.path("description").asText(null))
+              .url(repo.path("url").asText())
+              .sshUrl(repo.path("sshUrl").asText(null))
+              .homepage(repo.path("homepageUrl").asText(null))
+              .language(repo.path("primaryLanguage").path("name").asText(null))
+              .defaultBranch(defaultBranch)
+              .isPrivate(repo.path("isPrivate").asBoolean(false))
+              .isFork(repo.path("isFork").asBoolean(false))
+              .isArchived(repo.path("isArchived").asBoolean(false))
+              .isDisabled(repo.path("isDisabled").asBoolean(false))
+              .stars(repo.path("stargazerCount").asInt(0))
+              .watchers(repo.path("watchers").path("totalCount").asInt(0))
+              .forks(repo.path("forkCount").asInt(0))
+              .size(repo.path("diskUsage").asInt(0))
+              .createdAt(gitHubApiService.parseDate(repo.path("createdAt").asText()))
+              .updatedAt(gitHubApiService.parseDate(repo.path("updatedAt").asText()))
+              .pushedAt(gitHubApiService.parseDate(repo.path("pushedAt").asText()))
+              .commitSha(repo.path("defaultBranchRef").path("target").path("oid").asText(null))
+              .files(files)
+              .savedAt(new Date())
+              .build();
+        }
+
+        // ✅ 개별 저장 (Upsert)
+        gitHubRepositoryRepository.save(gitHubRepository);
       }
 
-      gitHubRepositoryRepository.saveAll(gitHubRepositories);
-      log.info("GitHub 레포지토리 정보 저장 완료 (사용자 ID: {}, 레포지토리 수: {})",
-          userId, gitHubRepositories.size());
+      log.info("GitHub 레포지토리 정보 동기화 완료 (사용자 ID: {}, 레포지토리 수: {})",
+          userId, repositories.size());
 
     } catch (Exception e) {
       log.error("GitHub 레포지토리 정보 저장 중 오류 발생", e);
