@@ -22,7 +22,6 @@ public class GithubLoginEventListener {
       containerFactory = "kafkaListenerContainerFactory"
   )
 
-
   public void listenGithubLoginEvent(GitHubLoginEvent githubLoginEvent) {
     // Handle the event here
     log.info("Received Github login event for user: {}", githubLoginEvent.getUsername());

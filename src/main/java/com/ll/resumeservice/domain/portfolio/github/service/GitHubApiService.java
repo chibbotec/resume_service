@@ -35,32 +35,41 @@ public class GitHubApiService {
 
   @Transactional
   public GitHubApi saveGitHubApi(GitHubLoginEvent gitHubLoginEvent) {
-    // 기존 데이터가 있는지 확인
-    GitHubApi existingApi = gitHubApiRepository.findByUserId(gitHubLoginEvent.getUserId());
+    try {
+      GitHubApi existingApi = gitHubApiRepository.findByUserId(gitHubLoginEvent.getUserId());
 
-    if (existingApi != null) {
-      // 기존 데이터 업데이트
-      existingApi.setGithubUsername(gitHubLoginEvent.getGithubUsername());
-      existingApi.setGithubAccessToken(gitHubLoginEvent.getGithubAccessToken());
-      existingApi.setGithubScopes(gitHubLoginEvent.getGithubScopes());
-      existingApi.setGithubTokenExpires(gitHubLoginEvent.getGithubTokenExpires());
-      return gitHubApiRepository.save(existingApi);
-    } else {
-      // 새 데이터 생성
-      GitHubApi gitHubApi = GitHubApi.builder()
-          .userId(gitHubLoginEvent.getUserId())
-          .username(gitHubLoginEvent.getUsername())
-          .email(gitHubLoginEvent.getEmail())
-          .nickname(gitHubLoginEvent.getNickname())
-          .githubUsername(gitHubLoginEvent.getGithubUsername())
-          .githubAccessToken(gitHubLoginEvent.getGithubAccessToken())
-          .githubTokenExpires(gitHubLoginEvent.getGithubTokenExpires())
-          .githubScopes(gitHubLoginEvent.getGithubScopes())
-          .providerId(gitHubLoginEvent.getProviderId())
-          .providerType(gitHubLoginEvent.getProviderType())
-          .build();
+      GitHub gitHub = GitHub.connectUsingOAuth(gitHubLoginEvent.getGithubAccessToken());
+      String username = gitHub.getMyself().getLogin();
+      String email = gitHub.getMyself().getEmail();
 
-      return gitHubApiRepository.save(gitHubApi);
+      if (existingApi != null) {
+        // 기존 데이터 업데이트
+        existingApi.setGithubUsername(username);
+        existingApi.setEmail(email);
+        existingApi.setGithubAccessToken(gitHubLoginEvent.getGithubAccessToken());
+        existingApi.setGithubScopes(gitHubLoginEvent.getGithubScopes());
+        existingApi.setGithubTokenExpires(gitHubLoginEvent.getGithubTokenExpires());
+        return gitHubApiRepository.save(existingApi);
+      } else {
+        // 새 데이터 생성
+        GitHubApi gitHubApi = GitHubApi.builder()
+            .userId(gitHubLoginEvent.getUserId())
+            .username(username)
+            .email(email)
+            .nickname(gitHubLoginEvent.getNickname())
+            .githubUsername(gitHubLoginEvent.getGithubUsername())
+            .githubAccessToken(gitHubLoginEvent.getGithubAccessToken())
+            .githubTokenExpires(gitHubLoginEvent.getGithubTokenExpires())
+            .githubScopes(gitHubLoginEvent.getGithubScopes())
+            .providerId(gitHubLoginEvent.getProviderId())
+            .providerType(gitHubLoginEvent.getProviderType())
+            .build();
+
+        return gitHubApiRepository.save(gitHubApi);
+      }
+    } catch (IOException e) {
+      log.error("IOException occurred while connecting to GitHub API");
+      return null;
     }
   }
 
@@ -82,7 +91,8 @@ public class GitHubApiService {
     return gitHubApiRepository.findByUserId(userId);
   }
 
-  public JsonNode executeGraphQLQuery(GitHubApi gitHubApi, String query, Map<String, Object> variables) throws IOException {
+  public JsonNode executeGraphQLQuery(GitHubApi gitHubApi, String query,
+      Map<String, Object> variables) throws IOException {
     HttpHeaders headers = new HttpHeaders();
     headers.setContentType(MediaType.APPLICATION_JSON);
     headers.setBearerAuth(gitHubApi.getGithubAccessToken());
