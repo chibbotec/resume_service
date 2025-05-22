@@ -41,6 +41,7 @@ public class GitHubApiService {
       GitHub gitHub = GitHub.connectUsingOAuth(gitHubLoginEvent.getGithubAccessToken());
       String username = gitHub.getMyself().getLogin();
       String email = gitHub.getMyself().getEmail();
+      log.info("GitHub API 연결 성공: {}", email);
 
       if (existingApi != null) {
         // 기존 데이터 업데이트
