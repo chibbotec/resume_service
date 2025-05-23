@@ -32,6 +32,14 @@ public class Portfolio {
 
   private Duration duration;
 
+  private String githubLink;
+
+  private String deployLink;
+
+  private Integer memberCount;
+
+  private String memberRoles;
+
   private Contents contents;
 
   private String thumbnailUrl;

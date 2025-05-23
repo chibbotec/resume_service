@@ -107,6 +107,10 @@ public class PortfolioService {
     // 나머지 필드 설정
     portfolio.setTitle(request.getTitle());
     portfolio.setPublicAccess(request.isPublicAccess());
+    portfolio.setGithubLink(request.getGithubLink());
+    portfolio.setDeployLink(request.getDeployLink());
+    portfolio.setMemberCount(request.getMemberCount());
+    portfolio.setMemberRoles(request.getMemberRoles());
 
     // MongoDB에 저장
     portfolioRepository.save(portfolio);

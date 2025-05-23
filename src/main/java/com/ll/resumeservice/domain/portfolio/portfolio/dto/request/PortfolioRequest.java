@@ -18,6 +18,14 @@ public class PortfolioRequest {
 
   private DurationRequest duration;
 
+  private String githubLink;
+
+  private String deployLink;
+
+  private Integer memberCount;
+
+  private String memberRoles;
+
   private ContentsRequest contents;
 
 //  private String thumbnailUrl;

@@ -23,6 +23,14 @@ public class PortfolioResponse {
 
   private Duration duration;
 
+  private String githubLink;
+
+  private String deployLink;
+
+  private Integer memberCount;
+
+  private String memberRoles;
+
   private Contents contents;
 
   public static PortfolioResponse of(Portfolio portfolio) {
@@ -33,6 +41,10 @@ public class PortfolioResponse {
         .author(portfolio.getAuthor())
         .duration(portfolio.getDuration())
         .contents(portfolio.getContents())
+        .deployLink(portfolio.getDeployLink())
+        .githubLink(portfolio.getGithubLink())
+        .memberCount(portfolio.getMemberCount())
+        .memberCount(portfolio.getMemberCount())
         .build();
   }
 }

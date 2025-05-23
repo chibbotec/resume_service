@@ -26,6 +26,14 @@ public class PortfolioDetailResponse {
 
   private Duration duration;
 
+  private String githubLink;
+
+  private String deployLink;
+
+  private Integer memberCount;
+
+  private String memberRoles;
+
   private Contents contents;
 
   private String thumbnailUrl;
@@ -169,6 +177,10 @@ public class PortfolioDetailResponse {
                 .toList() : null)
         .createdAt(portfolio.getCreatedAt())
         .updatedAt(portfolio.getUpdatedAt())
+        .githubLink(portfolio.getGithubLink())
+        .deployLink(portfolio.getDeployLink())
+        .memberCount(portfolio.getMemberCount())
+        .memberRoles(portfolio.getMemberRoles())
         .build();
   }
 }
