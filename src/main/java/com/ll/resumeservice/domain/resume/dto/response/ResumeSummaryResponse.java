@@ -15,6 +15,7 @@ public class ResumeSummaryResponse {
   private String id;
   private String title;
   private LocalDateTime createdAt;
+  private LocalDateTime updatedAt;
 
   public static ResumeSummaryResponse of(Resume resume) {
     if (resume == null) return null;
