@@ -25,6 +25,7 @@ public class ResumeCreateRequest {
   private List<ProjectDto> projects; // 프로젝트 정보
   private List<EducationDto> educations; // 교육 정보
   private List<CertificateDto> certificates; // 자격증/수상 정보
+  private List<CoverLetter> coverLetters; // 커버레터 정보
 
   @Data
   @Builder
@@ -89,5 +90,14 @@ public class ResumeCreateRequest {
     private String name;           // 자격증명/수상내역
     private LocalDate date;        // 취득/수상일
     private String organization;   // 주관기관
+  }
+
+  @Data
+  @Builder
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class CoverLetter {
+    private String title;
+    private String content;
   }
 }

@@ -104,8 +104,13 @@ public class ResumeService {
                 .date(certificate.getDate())
                 .organization(certificate.getOrganization())
                 .build()
-        ).toList(
-        ))
+        ).toList())
+        .coverLetters(request.getCoverLetters().stream().map(
+            coverletter -> Resume.CoverLetter.builder()
+                .title(coverletter.getTitle())
+                .content(coverletter.getContent())
+                .build()
+            ).toList())
         .build();
 
     return ResumeDetailResponse.of(resumeRepository.save(resume));

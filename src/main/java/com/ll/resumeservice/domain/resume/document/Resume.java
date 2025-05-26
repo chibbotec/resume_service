@@ -73,6 +73,9 @@ public class Resume {
   @Field("certificates")
   private List<Certificate> certificates;
 
+  @Field("coverLetters")
+  private List<CoverLetter> coverLetters;
+
   @Data
   @Builder
   @NoArgsConstructor
@@ -204,4 +207,18 @@ public class Resume {
     @Field("organization")
     private String organization;
   }
+
+  @Data
+  @Builder
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class CoverLetter {
+    @Field("title")
+    private String title;
+
+    @Field("content")
+    private String content;
+  }
+
+
 }

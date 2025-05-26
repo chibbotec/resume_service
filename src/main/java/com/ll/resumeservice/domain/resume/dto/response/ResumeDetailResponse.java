@@ -33,6 +33,7 @@ public class ResumeDetailResponse {
   private List<ProjectDto> projects;
   private List<EducationDto> educations;
   private List<CertificateDto> certificates;
+  private List<CoverletterDto> coverletters;
 
   @Data
   @Builder
@@ -176,6 +177,23 @@ public class ResumeDetailResponse {
     }
   }
 
+  @Data
+  @Builder
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class CoverletterDto {
+    private String title;
+    private String content;
+
+    public static CoverletterDto of(Resume.CoverLetter coverLetter) {
+      if (coverLetter == null) return null;
+      return CoverletterDto.builder()
+          .title(coverLetter.getTitle())
+          .content(coverLetter.getContent())
+          .build();
+    }
+  }
+
   public static ResumeDetailResponse of(Resume resume) {
     if (resume == null) return null;
 
@@ -212,6 +230,10 @@ public class ResumeDetailResponse {
         .certificates(resume.getCertificates() != null ?
             resume.getCertificates().stream()
                 .map(CertificateDto::of)
+                .collect(Collectors.toList()) : null)
+        .coverletters(resume.getCoverLetters() != null ?
+            resume.getCoverLetters().stream()
+                .map(CoverletterDto::of)
                 .collect(Collectors.toList()) : null)
         .build();
   }
