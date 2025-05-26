@@ -109,7 +109,7 @@ public class ResumeDetailResponse {
     private LocalDate startDate;
     private LocalDate endDate;
     private Integer memberCount;
-    private String memberRole;
+    private String memberRoles;
     private String githubLink;
     private String deployLink;
 
@@ -123,7 +123,7 @@ public class ResumeDetailResponse {
           .startDate(project.getStartDate())
           .endDate(project.getEndDate())
           .memberCount(project.getMemberCount())
-          .memberRole(project.getMemberRole())
+          .memberRoles(project.getMemberRoles())
           .githubLink(project.getGithubLink())
           .deployLink(project.getDeployLink())
           .build();

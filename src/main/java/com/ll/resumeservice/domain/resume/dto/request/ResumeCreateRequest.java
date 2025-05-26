@@ -62,7 +62,7 @@ public class ResumeCreateRequest {
     private LocalDate startDate;   // 시작일
     private LocalDate endDate;     // 종료일
     private Integer memberCount;   // 팀원 수
-    private String memberRole;     // 팀 내 역할
+    private String memberRoles;     // 팀 내 역할
     private String githubLink;     // 깃허브 링크
     private String deployLink;     // 배포 링크
   }

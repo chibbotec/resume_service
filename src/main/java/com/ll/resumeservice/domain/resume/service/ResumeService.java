@@ -83,6 +83,7 @@ public class ResumeService {
                 .startDate(project.getStartDate())
                 .endDate(project.getEndDate())
                 .memberCount(project.getMemberCount())
+                .memberRoles(project.getMemberRoles())
                 .githubLink(project.getGithubLink())
                 .deployLink(project.getDeployLink())
                 .build()

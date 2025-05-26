@@ -153,8 +153,8 @@ public class Resume {
     @Field("member_count")
     private Integer memberCount;
 
-    @Field("member_role")
-    private String memberRole;
+    @Field("member_roles")
+    private String memberRoles;
 
     @Field("github_link")
     private String githubLink;
