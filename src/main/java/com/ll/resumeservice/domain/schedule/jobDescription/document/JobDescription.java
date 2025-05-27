@@ -39,6 +39,7 @@ public class JobDescription {
   @Enumerated(EnumType.STRING)
   @Column(name = "public_grade")
   private PublicGrade publicGrade;
+  private Long userId;
 
   private Long spaceId;                 // 스페이스 ID
 

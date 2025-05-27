@@ -5,6 +5,8 @@ import com.ll.resumeservice.domain.schedule.jobDescription.dto.request.JobDescri
 import com.ll.resumeservice.domain.schedule.jobDescription.dto.request.JobDescriptionRequest;
 import com.ll.resumeservice.domain.schedule.jobDescription.dto.response.JobDescriptionResponse;
 import com.ll.resumeservice.domain.schedule.jobDescription.service.JobDescriptionService;
+import com.ll.resumeservice.global.client.MemberResponse;
+import com.ll.resumeservice.global.webMvc.LoginUser;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,9 +30,10 @@ public class ApiV1JobDescriptionController {
 
   @GetMapping
   public ResponseEntity<List<JobDescriptionResponse>> getJobDescriptions(
-      @PathVariable("spaceId") Long spaceId) {
+      @PathVariable("spaceId") Long spaceId,
+      @LoginUser MemberResponse loginUser) {
 
-    List<JobDescriptionResponse> jobDescriptions = jobDescriptionService.getJobDescriptions(spaceId);
+    List<JobDescriptionResponse> jobDescriptions = jobDescriptionService.getJobDescriptions(spaceId, loginUser.getId());
 
     return ResponseEntity.ok(jobDescriptions);
   }

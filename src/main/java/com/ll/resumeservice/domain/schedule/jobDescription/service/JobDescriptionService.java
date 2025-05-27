@@ -40,8 +40,10 @@ public class JobDescriptionService {
     return JobDescriptionResponse.of(jobDescriptionRepository.save(jobDescription));
   }
 
-  public List<JobDescriptionResponse> getJobDescriptions(Long spaceId) {
-    List<JobDescription> jobDescriptions = jobDescriptionRepository.findBySpaceId(spaceId);
+  public List<JobDescriptionResponse> getJobDescriptions(Long spaceId, Long userId) {
+
+    List<JobDescription> jobDescriptions = jobDescriptionRepository.findJobDescriptionsByAccess(spaceId, userId);
+
     return jobDescriptions.stream()
         .map(JobDescriptionResponse::of)
         .toList();
