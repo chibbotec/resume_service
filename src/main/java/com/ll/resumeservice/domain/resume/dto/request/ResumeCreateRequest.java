@@ -59,7 +59,7 @@ public class ResumeCreateRequest {
     private String name;           // 프로젝트명
     private String description;    // 프로젝트 설명
     private List<String> techStack;    // 사용 기술 스택
-    private String role;           // 담당 역할
+    private List<String> role;           // 담당 역할
     private LocalDate startDate;   // 시작일
     private LocalDate endDate;     // 종료일
     private Integer memberCount;   // 팀원 수

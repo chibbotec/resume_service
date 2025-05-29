@@ -79,7 +79,7 @@ public class ResumeService {
                 .name(project.getName())
                 .description(project.getDescription())
                 .techStack(project.getTechStack())
-                .role(project.getRole())
+                .role(project.getRole().stream().toList())
                 .startDate(project.getStartDate())
                 .endDate(project.getEndDate())
                 .memberCount(project.getMemberCount())

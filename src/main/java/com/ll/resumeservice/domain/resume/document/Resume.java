@@ -145,7 +145,7 @@ public class Resume {
     private List<String> techStack;
 
     @Field("role")
-    private String role;
+    private List<String> role;
 
     @Field("start_date")
     private LocalDate startDate;
@@ -219,6 +219,4 @@ public class Resume {
     @Field("content")
     private String content;
   }
-
-
 }

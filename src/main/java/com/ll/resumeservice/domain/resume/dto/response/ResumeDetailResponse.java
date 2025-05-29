@@ -106,7 +106,7 @@ public class ResumeDetailResponse {
     private String name;
     private String description;
     private List<String> techStack;
-    private String role;
+    private List<String> role;
     private LocalDate startDate;
     private LocalDate endDate;
     private Integer memberCount;
