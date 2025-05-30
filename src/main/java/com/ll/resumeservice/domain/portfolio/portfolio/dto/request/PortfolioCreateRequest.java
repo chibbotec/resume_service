@@ -10,7 +10,7 @@ import lombok.Setter;
 
 @Getter
 @Builder
-public class PortfolioRequest {
+public class PortfolioCreateRequest {
 
   private String title;
 

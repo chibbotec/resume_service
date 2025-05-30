@@ -7,8 +7,9 @@ import com.ll.resumeservice.domain.portfolio.portfolio.document.Portfolio.Conten
 import com.ll.resumeservice.domain.portfolio.portfolio.document.Portfolio.Duration;
 import com.ll.resumeservice.domain.portfolio.portfolio.document.Portfolio.GitHubRepo;
 import com.ll.resumeservice.domain.portfolio.portfolio.document.Portfolio.SavedFile;
+import com.ll.resumeservice.domain.portfolio.portfolio.dto.request.PortfolioPutRequest;
 import com.ll.resumeservice.domain.portfolio.portfolio.dto.response.CatergorizedPortfolioResponse;
-import com.ll.resumeservice.domain.portfolio.portfolio.dto.request.PortfolioRequest;
+import com.ll.resumeservice.domain.portfolio.portfolio.dto.request.PortfolioCreateRequest;
 import com.ll.resumeservice.domain.portfolio.portfolio.dto.response.PortfolioDetailResponse;
 import com.ll.resumeservice.domain.portfolio.portfolio.repository.PortfolioRepository;
 import com.ll.resumeservice.global.error.ErrorCode;
@@ -42,7 +43,7 @@ public class PortfolioService {
   }
 
   @Transactional
-  public void createPortfolio(Long spaceId, Long userId, PortfolioRequest request) {
+  public void createPortfolio(Long spaceId, Long userId, PortfolioCreateRequest request) {
     Portfolio portfolio = new Portfolio();
 
     portfolio.setSpaceId(spaceId);
@@ -115,5 +116,95 @@ public class PortfolioService {
     // MongoDB에 저장
     portfolioRepository.save(portfolio);
 
+  }
+
+  @Transactional
+  public PortfolioDetailResponse updatePortfolio(String portfolioId, Long userId, PortfolioPutRequest request) {
+    Portfolio portfolio = portfolioRepository.findById(portfolioId)
+        .orElseThrow(() -> new CustomException(ErrorCode.PORTFOLIO_NOT_FOUND));
+
+    if(!portfolio.getAuthor().getId().equals(userId)) {
+      throw new CustomException(ErrorCode.UNAUTHORIZED_ACCESS);
+    }
+
+    // 기본 필드 업데이트
+    portfolio.setTitle(request.getTitle());
+    portfolio.setGithubLink(request.getGithubLink());
+    portfolio.setDeployLink(request.getDeployLink());
+    portfolio.setMemberCount(request.getMemberCount());
+    portfolio.setMemberRoles(request.getMemberRoles());
+    portfolio.setPublicAccess(request.isPublicAccess());
+
+    // Duration 업데이트
+    if (request.getDuration() != null) {
+      Duration duration = Duration.builder()
+          .startDate(request.getDuration().getStartDate())
+          .endDate(request.getDuration().getEndDate())
+          .build();
+      portfolio.setDuration(duration);
+    }
+
+    // Contents 업데이트
+    if (request.getContents() != null) {
+      Architecture architecture = null;
+      if (request.getContents().getArchitecture() != null) {
+        architecture = Architecture.builder()
+            .communication(request.getContents().getArchitecture().getCommunication())
+            .deployment(request.getContents().getArchitecture().getDeployment())
+            .build();
+      }
+
+      Contents contents = Contents.builder()
+          .techStack(request.getContents().getTechStack())
+          .summary(request.getContents().getSummary())
+          .description(request.getContents().getDescription())
+          .roles(request.getContents().getRoles())
+          .features(request.getContents().getFeatures())
+          .architecture(architecture)
+          .build();
+      portfolio.setContents(contents);
+    }
+
+    // GitHub Repos 업데이트
+    portfolio.setGithubRepos(request.getGithubRepos() != null ?
+        request.getGithubRepos().stream().map(repo ->
+            GitHubRepo.builder()
+                .name(repo.getName())
+                .url(repo.getUrl())
+                .description(repo.getDescription())
+                .language(repo.getLanguage())
+                .lineCount(repo.getLineCount())
+                .byteSize(repo.getByteSize())
+                .selectedDirectories(repo.getSelectedDirectories())
+                .build()
+        ).collect(Collectors.toList()) : List.of());
+
+    // Saved Files 업데이트
+    portfolio.setSavedFiles(request.getSavedFiles() != null ?
+        request.getSavedFiles().stream().map(file ->
+            SavedFile.builder()
+                .id(file.getId())
+                .name(file.getName())
+                .path(file.getPath())
+                .repository(file.getRepository())
+                .savedPath(file.getSavedPath())
+                .build()
+        ).collect(Collectors.toList()) : List.of());
+
+    // 저장 및 응답 반환
+    Portfolio updatedPortfolio = portfolioRepository.save(portfolio);
+    return PortfolioDetailResponse.of(updatedPortfolio);
+  }
+
+  @Transactional
+  public void deletePortfolio(String portfolioId, Long userId) {
+    Portfolio portfolio = portfolioRepository.findById(portfolioId)
+        .orElseThrow(() -> new CustomException(ErrorCode.PORTFOLIO_NOT_FOUND));
+
+    if (!portfolio.getAuthor().getId().equals(userId)) {
+      throw new CustomException(ErrorCode.UNAUTHORIZED_ACCESS);
+    }
+
+    portfolioRepository.delete(portfolio);
   }
 }
