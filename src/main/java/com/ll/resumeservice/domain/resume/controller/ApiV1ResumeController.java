@@ -2,6 +2,7 @@ package com.ll.resumeservice.domain.resume.controller;
 
 
 import com.ll.resumeservice.domain.resume.dto.request.ResumeCreateRequest;
+import com.ll.resumeservice.domain.resume.dto.request.ResumePutRequest;
 import com.ll.resumeservice.domain.resume.dto.response.ResumeDetailResponse;
 import com.ll.resumeservice.domain.resume.dto.response.ResumeSummaryResponse;
 import com.ll.resumeservice.domain.resume.service.ResumeService;
@@ -11,9 +12,11 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -50,6 +53,24 @@ public class ApiV1ResumeController {
   ) {
 
     return ResponseEntity.ok(resumeService.createResume(spaceId, loginUser, request));
+  }
+
+  @PutMapping("/{resumeId}")
+  public ResponseEntity<ResumeDetailResponse> updateResume(
+      @LoginUser MemberResponse loginUser,
+      @PathVariable("resumeId") String resumeId,
+      @RequestBody ResumePutRequest request
+  ){
+    return  ResponseEntity.ok(resumeService.updateResume(loginUser.getId(), resumeId, request));
+  }
+
+  @DeleteMapping("/{resumeId}")
+  public ResponseEntity deleteResume(
+      @LoginUser MemberResponse loginUser,
+      @PathVariable("resumeId") String resumeId
+  ) {
+    resumeService.deleteResume(loginUser.getId(), resumeId);
+    return ResponseEntity.noContent().build();
   }
 
 }
