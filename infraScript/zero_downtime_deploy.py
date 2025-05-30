@@ -75,7 +75,8 @@ class ServiceManager:
             f"docker run -d --name={name} --restart unless-stopped -p {port}:9060 "
             f"-e TZ=Asia/Seoul "
             f"-v /dockerProjects/chibbotec/resume_service/volumes/gen:/gen "
-            f"-v /dockerProjects/chibbotec/resume_service/repository/data:/app/repository/data "  # 새 마운트 추가
+            f"-v /dockerProjects/chibbotec/resume_service/repository/data:/app/repository/data "
+            f"-v /dockerProjects/chibbotec/resume_service/applicationJob/data:/app/applicationJob/data "
             f"--pull always ghcr.io/chibbotec/resume_service")
     ##
     def _switch_port(self) -> None:

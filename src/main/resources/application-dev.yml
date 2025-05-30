@@ -27,3 +27,5 @@ services:
 files:
   storage:
     path: ./repository/data
+  applicationJob:
+    path: ./applicationJob/data
