@@ -33,7 +33,7 @@ public class ResumeDetailResponse {
   private List<ProjectDto> projects;
   private List<EducationDto> educations;
   private List<CertificateDto> certificates;
-  private List<CoverletterDto> coverletters;
+  private List<CoverletterDto> coverLetters;
 
   @Data
   @Builder
@@ -231,7 +231,7 @@ public class ResumeDetailResponse {
             resume.getCertificates().stream()
                 .map(CertificateDto::of)
                 .collect(Collectors.toList()) : null)
-        .coverletters(resume.getCoverLetters() != null ?
+        .coverLetters(resume.getCoverLetters() != null ?
             resume.getCoverLetters().stream()
                 .map(CoverletterDto::of)
                 .collect(Collectors.toList()) : null)
