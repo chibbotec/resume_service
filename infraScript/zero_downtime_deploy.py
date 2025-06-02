@@ -72,7 +72,9 @@ class ServiceManager:
     # Docker 컨테이너를 실행하는 함수
     def _run_container(self, name: str, port: int) -> None:
         os.system(
-            f"docker run -d --name={name} --restart unless-stopped -p {port}:9060 "
+            f"docker run -d --name={name} --network=chibbotec-network "
+            f"--network-alias=resume "
+            f"--restart unless-stopped -p {port}:9060 "
             f"-e TZ=Asia/Seoul "
             f"-v /dockerProjects/chibbotec/resume_service/volumes/gen:/gen "
             f"-v /dockerProjects/chibbotec/resume_service/repository/data:/app/repository/data "
