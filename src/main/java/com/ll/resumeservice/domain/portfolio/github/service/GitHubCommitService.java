@@ -36,7 +36,7 @@ public class GitHubCommitService {
   private final CommitFileListRepository commitFileListRepository;
 
   int processors = Runtime.getRuntime().availableProcessors();
-  private final ExecutorService commitExecutor = Executors.newFixedThreadPool(processors);;
+  private final ExecutorService commitExecutor = Executors.newFixedThreadPool(processors);
 
   public CommitResponse getCommitFiles(Long userId, RepoCommitRequest request) {
     // 1. 입력 검증
