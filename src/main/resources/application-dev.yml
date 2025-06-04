@@ -17,7 +17,7 @@ spring:
         session.events.log.LOG_QUERIES_SLOWER_THAN_MS: 25
   kafka:
     #    bootstrap-servers: 210.113.34.187:19092,210.113.34.187:29092,210.113.34.187:39092
-    bootstrap-servers: host.docker.internal:19092
+    bootstrap-servers: 172.30.1.23:19092,172.30.1.23:29092,172.30.1.23:39092
 #    bootstrap-servers: localhost:19092
     producer:
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer

@@ -33,6 +33,13 @@ management:
   info:
     env:
       enabled: true
+  # Zipkin 추적 설정 추가
+  tracing:
+    sampling:
+      probability: 1.0  # 100% 샘플링 (개발환경용)
+  zipkin:
+    tracing:
+      endpoint: http://zipkin:9411/api/v2/spans
   # 새로운 Prometheus 설정
   prometheus:
     metrics:
