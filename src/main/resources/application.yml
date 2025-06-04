@@ -40,6 +40,10 @@ management:
   zipkin:
     tracing:
       endpoint: http://zipkin:9411/api/v2/spans
+      excluded-paths:
+        - "/actuator/**"
+        - "/health/**"
+        - "/metrics/**"
   # 새로운 Prometheus 설정
   prometheus:
     metrics:
