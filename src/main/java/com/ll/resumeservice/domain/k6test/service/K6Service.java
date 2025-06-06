@@ -5,6 +5,7 @@ import com.ll.resumeservice.domain.portfolio.github.dto.request.SaveRepositoryRe
 import com.ll.resumeservice.domain.portfolio.github.dto.response.RepoTaskStatusResponse;
 import com.ll.resumeservice.domain.portfolio.github.dto.response.RepositorySaveResponse;
 import com.ll.resumeservice.domain.portfolio.github.service.GitHubApiService;
+import java.io.BufferedOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,12 +16,16 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.kohsuke.github.GHContent;
@@ -50,46 +55,6 @@ public class K6Service {
         entry.getValue().isCompleted() &&
             entry.getValue().getCompletionTime() != null &&
             entry.getValue().getCompletionTime() < threshold);
-  }
-
-  public String AsyncRepositoryDownload(Long spaceId, Long userId,
-      SaveRepositoryRequest request) {
-    // 작업 ID 생성
-    String taskId = UUID.randomUUID().toString();
-    log.info("[Task: {}] 비동기 레포지토리 다운로드 작업 시작 - 사용자: {}, 레포지토리: {}",
-        taskId, userId, request.getRepository());
-
-    // 작업 정보 생성 및 저장
-    DownloadTaskInfo taskInfo = new DownloadTaskInfo();
-    taskProgressMap.put(taskId, taskInfo);
-
-    // 백그라운드에서 작업 실행
-    CompletableFuture.runAsync(() -> {
-      try {
-        log.info("[Task: {}] 레포지토리 다운로드 작업 시작 - 파일 수: {}",
-            taskId, null);
-        RepositorySaveResponse result = doSaveRepositoryContents(taskInfo, spaceId, userId,
-            request);
-        taskInfo.setResult(result);
-        taskInfo.setCompleted(true);
-        taskInfo.setCompletionTime(System.currentTimeMillis());
-        log.info("[Task: {}] 레포지토리 다운로드 작업 완료 - 저장된 파일: {}, 실패한 파일: {}",
-            taskId, result.getSavedFiles().size(), result.getFailedFiles().size());
-      } catch (Exception e) {
-        log.error("[Task: {}] 레포지토리 다운로드 작업 실패", taskId, e);
-        taskInfo.setError(e.getMessage());
-        taskInfo.setCompleted(true);
-        taskInfo.setCompletionTime(System.currentTimeMillis());
-      }
-    }, downloadExecutor).exceptionally(throwable -> {
-      log.error("[Task: {}] 레포지토리 다운로드 작업 중 예외 발생", taskId, throwable);
-      taskInfo.setError(throwable.getMessage());
-      taskInfo.setCompleted(true);
-      taskInfo.setCompletionTime(System.currentTimeMillis());
-      return null;
-    });
-
-    return taskId;
   }
 
   public RepoTaskStatusResponse getTaskStatus(String taskId) {
@@ -131,7 +96,47 @@ public class K6Service {
     return builder.build();
   }
 
-  private RepositorySaveResponse doSaveRepositoryContents(DownloadTaskInfo taskInfo, Long spaceId,
+  public String AsyncRepositoryDownload(Long spaceId, Long userId,
+      SaveRepositoryRequest request) {
+    // 작업 ID 생성
+    String taskId = UUID.randomUUID().toString();
+    log.info("[Task: {}] 비동기 레포지토리 다운로드 작업 시작 - 사용자: {}, 레포지토리: {}",
+        taskId, userId, request.getRepository());
+
+    // 작업 정보 생성 및 저장
+    DownloadTaskInfo taskInfo = new DownloadTaskInfo();
+    taskProgressMap.put(taskId, taskInfo);
+
+    // 백그라운드에서 작업 실행
+    CompletableFuture.runAsync(() -> {
+      try {
+        log.info("[Task: {}] 레포지토리 다운로드 작업 시작 - 파일 수: {}",
+            taskId, null);
+        RepositorySaveResponse result = doSaveRepositoryContentsAsync(taskInfo, spaceId, userId,
+            request);
+        taskInfo.setResult(result);
+        taskInfo.setCompleted(true);
+        taskInfo.setCompletionTime(System.currentTimeMillis());
+        log.info("[Task: {}] 레포지토리 다운로드 작업 완료 - 저장된 파일: {}, 실패한 파일: {}",
+            taskId, result.getSavedFiles().size(), result.getFailedFiles().size());
+      } catch (Exception e) {
+        log.error("[Task: {}] 레포지토리 다운로드 작업 실패", taskId, e);
+        taskInfo.setError(e.getMessage());
+        taskInfo.setCompleted(true);
+        taskInfo.setCompletionTime(System.currentTimeMillis());
+      }
+    }, downloadExecutor).exceptionally(throwable -> {
+      log.error("[Task: {}] 레포지토리 다운로드 작업 중 예외 발생", taskId, throwable);
+      taskInfo.setError(throwable.getMessage());
+      taskInfo.setCompleted(true);
+      taskInfo.setCompletionTime(System.currentTimeMillis());
+      return null;
+    });
+
+    return taskId;
+  }
+
+  private RepositorySaveResponse doSaveRepositoryContentsAsync(DownloadTaskInfo taskInfo, Long spaceId,
       Long userId, SaveRepositoryRequest request) {
     try {
       // 1. GitHub 연결 및 기본 설정
@@ -300,7 +305,6 @@ public class K6Service {
     return taskId;
   }
 
-  // 수정된 다운로드 메서드
   private RepositorySaveResponse doSaveRepositoryContentsSequential(DownloadTaskInfo taskInfo,
       Long spaceId, Long userId, SaveRepositoryRequest request) {
     try {
@@ -400,6 +404,104 @@ public class K6Service {
     }
   }
 
+  public String zipRepositoryDownload(Long spaceId, Long userId, SaveRepositoryRequest request) {
+    String taskId = UUID.randomUUID().toString();
+    log.info("[Task: {}] zip 레포지토리 다운로드 작업 시작 - 사용자: {}, 레포지토리: {}",
+        taskId, userId, request.getRepository());
+
+    // 작업 정보 생성 및 저장
+    DownloadTaskInfo taskInfo = new DownloadTaskInfo();
+    taskProgressMap.put(taskId, taskInfo);
+
+    // 백그라운드에서 순차적으로 작업 실행
+    CompletableFuture.runAsync(() -> {
+      try {
+        log.info("[Task: {}] 레포지토리 다운로드 작업 시작 - 파일 수: {}",
+            taskId, null);
+
+        // 순차 처리용 메서드 호출
+        RepositorySaveResponse result = doSaveRepositoryContentsZip(taskInfo, spaceId, userId, request);
+
+        taskInfo.setResult(result);
+        taskInfo.setCompleted(true);
+        taskInfo.setCompletionTime(System.currentTimeMillis());
+        log.info("[Task: {}] 레포지토리 다운로드 작업 완료 - 저장된 파일: {}, 실패한 파일: {}",
+            taskId, result.getSavedFiles().size(), result.getFailedFiles().size());
+      } catch (Exception e) {
+        log.error("[Task: {}] 레포지토리 다운로드 작업 실패", taskId, e);
+        taskInfo.setError(e.getMessage());
+        taskInfo.setCompleted(true);
+        taskInfo.setCompletionTime(System.currentTimeMillis());
+      }
+    }, downloadExecutor).exceptionally(throwable -> {
+      log.error("[Task: {}] 레포지토리 다운로드 작업 중 예외 발생", taskId, throwable);
+      taskInfo.setError(throwable.getMessage());
+      taskInfo.setCompleted(true);
+      taskInfo.setCompletionTime(System.currentTimeMillis());
+      return null;
+    });
+
+    return taskId;
+  }
+
+  private RepositorySaveResponse doSaveRepositoryContentsZip(DownloadTaskInfo taskInfo, Long spaceId, Long userId, SaveRepositoryRequest request) {
+    try{
+      log.info("[Task] GitHub 연결 시도 - 사용자: {}", userId);
+
+      GitHub github = gitHubApiService.getGitHubConnection(userId);
+//      GitHub github = new GitHubBuilder()
+//          .withOAuthToken("")
+//          .build();
+      GHRepository repo = github.getRepository(request.getRepository());
+
+      log.info("[Task] GitHub 레포지토리 연결 성공: {}", request.getRepository());
+
+      String repoName = String.format("%d_%d_", spaceId, userId) + request.getRepository().replace("/", "-");
+      String saveDirectoryPath = Paths.get(storageBasePath, repoName).toString();
+      log.info("[Task] 저장 경로 설정: {}", saveDirectoryPath);
+
+      List<String> filePaths = request.getFilePaths();
+
+      Set<String> targetFiles = filePaths.stream()
+          .filter(path -> !path.endsWith("/") && path.contains(".")) // 확장자가 있는 파일만
+          .collect(Collectors.toSet());
+
+      Files.createDirectories(Paths.get(saveDirectoryPath));
+
+      List<String> savedFiles = new ArrayList<>();
+      List<String> failedFiles = new ArrayList<>();
+
+      taskInfo.addToTotal(targetFiles.size());
+      log.info("[Task] 총 파일 수 설정: {}", filePaths.size());
+
+      repo.readZip(inputStream -> {
+        // 여기서 inputStream을 처리
+        // 예: 파일로 저장
+        return processZipSelectively(inputStream, targetFiles, saveDirectoryPath, taskInfo, savedFiles, failedFiles);
+      }, "main");
+
+      taskInfo.setCompleted(true);
+      taskInfo.setCompletionTime(System.currentTimeMillis());
+      log.info("[Task] 순차 다운로드 작업 완료");
+
+      return RepositorySaveResponse.builder()
+          .savedFiles(savedFiles)
+          .failedFiles(failedFiles)
+          .savedPath(saveDirectoryPath)
+          .build();
+
+    }catch (Exception e){
+      log.error("[Task] GitHub 레포지토리 정보 저장 중 오류 발생", e);
+      taskInfo.setCompleted(true);
+      taskInfo.setError(e.getMessage());
+      taskInfo.setCompletionTime(System.currentTimeMillis());
+      return RepositorySaveResponse.builder()
+          .success(false)
+          .failedFiles(List.of("전체 작업 실패"))
+          .build();
+    }
+  }
+
   // 레포지토리 전체 구조를 가져오는 메서드
   private List<String> getAllRepositoryFiles(GHRepository repo, String branch) throws IOException {
     List<String> allFilePaths = new ArrayList<>();
@@ -429,6 +531,93 @@ public class K6Service {
     } catch (IOException e) {
       log.error("디렉토리 탐색 실패: {} - {}", path, e.getMessage());
       throw e;
+    }
+  }
+
+  private Void processZipSelectively(InputStream zipInputStream, Set<String> targetFiles,
+      String saveDirectoryPath, DownloadTaskInfo taskInfo,
+      List<String> savedFiles, List<String> failedFiles) throws IOException {
+
+    try (ZipInputStream zis = new ZipInputStream(zipInputStream)) {
+      ZipEntry entry;
+
+      while ((entry = zis.getNextEntry()) != null) {
+        try {
+          String entryName = entry.getName();
+
+          // ZIP 엔트리 이름에서 레포지토리 루트 폴더 제거
+          // GitHub ZIP은 보통 "repository-name-branch/" 형태로 시작
+          String normalizedPath = normalizeZipEntryPath(entryName);
+
+          // 타겟 파일에 포함되는지 확인 (실제 파일만)
+          if (shouldIncludeFile(normalizedPath, targetFiles)) {
+
+            // 파일만 처리 (디렉토리는 자동 생성됨)
+            if (!entry.isDirectory()) {
+              // 파일 저장
+              saveZipEntryToFile(zis, saveDirectoryPath, normalizedPath);
+              savedFiles.add(normalizedPath);
+              taskInfo.incrementCompleted();
+              log.debug("[Task] 파일 저장 완료: {}", normalizedPath);
+            }
+          }
+
+        } catch (Exception e) {
+          String entryName = entry.getName();
+          String normalizedPath = normalizeZipEntryPath(entryName);
+          failedFiles.add(normalizedPath);
+          if (targetFiles.contains(normalizedPath)) { // 실제 타겟 파일인 경우만 카운트
+            taskInfo.incrementCompleted();
+          }
+          log.error("[Task] 파일 처리 실패: {} - {}", normalizedPath, e.getMessage(), e);
+        } finally {
+          zis.closeEntry();
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * ZIP 엔트리 경로를 정규화 (GitHub ZIP의 루트 폴더 제거)
+   */
+  private String normalizeZipEntryPath(String entryName) {
+    // GitHub ZIP 파일은 "repository-name-commit-hash/" 형태의 루트 폴더를 가짐
+    int firstSlash = entryName.indexOf('/');
+    if (firstSlash != -1 && firstSlash < entryName.length() - 1) {
+      return entryName.substring(firstSlash + 1);
+    }
+    return entryName;
+  }
+
+  /**
+   * 파일이 타겟 경로에 포함되는지 확인 (실제 파일만)
+   */
+  private boolean shouldIncludeFile(String filePath, Set<String> targetFiles) {
+    // ZipEntry에서 디렉토리 확인은 entry.isDirectory()를 사용해야 함
+    // 여기서는 단순히 타겟 파일 리스트에 있는지만 확인
+    return targetFiles.contains(filePath);
+  }
+
+  /**
+   * ZIP 엔트리를 파일로 저장
+   */
+  private void saveZipEntryToFile(ZipInputStream zis, String saveDirectoryPath, String relativePath) throws IOException {
+    Path filePath = Paths.get(saveDirectoryPath, relativePath);
+
+    // 상위 디렉토리 생성
+    Files.createDirectories(filePath.getParent());
+
+    // 파일 저장
+    try (FileOutputStream fos = new FileOutputStream(filePath.toFile());
+        BufferedOutputStream bos = new BufferedOutputStream(fos)) {
+
+      byte[] buffer = new byte[8192];
+      int bytesRead;
+      while ((bytesRead = zis.read(buffer)) != -1) {
+        bos.write(buffer, 0, bytesRead);
+      }
     }
   }
 }

@@ -76,5 +76,23 @@ public class ApiV1K6Controller {
     return ResponseEntity.accepted().body(response);
   }
 
+  @PostMapping("/users/{userId}/save-files/zip")
+  public ResponseEntity<TaskResponse> saveFilesZip(
+      @PathVariable("spaceId") Long spaceId,
+      @PathVariable("userId") Long userId,
+      @RequestBody SaveRepositoryRequest saveRepositoryRequest
+  ){
+    String taskId = k6Service.zipRepositoryDownload(spaceId, userId, saveRepositoryRequest);
+
+    // 즉시 응답 반환
+    TaskResponse response = TaskResponse.builder()
+        .taskId(taskId)
+        .message("다운로드가 백그라운드에서 시작되었습니다. 상태를 확인하려면 '/api/spaces/" +
+            spaceId + "/github/tasks/" + taskId + "' 엔드포인트를 사용하세요.")
+        .build();
+
+    return ResponseEntity.accepted().body(response);
+  }
+
 
 }
